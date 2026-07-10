@@ -1,0 +1,20 @@
+[
+  {
+    "id": 1,
+    "username": "alice",
+    "full_name": "Alice",
+    "is_private": false
+  },
+  {
+    "id": 2,
+    "username": "bob",
+    "full_name": "Bob",
+    "is_private": false
+  },
+  {
+    "id": 4,
+    "username": "diana",
+    "full_name": "Diana",
+    "is_private": false
+  }
+]
