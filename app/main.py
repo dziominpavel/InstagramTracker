@@ -1,26 +1,15 @@
-import sys
 from datetime import date
 from pathlib import Path
 from typing import Optional
 
 import typer
-from rich.console import Console
-from rich.table import Table
 
-from app.clients.mock_client import MockClient
-from app.clients.official_export_client import OfficialExportClient
-from app.config import Settings, setup_logger
-from app.repositories.json_repository import JsonRepository
-from app.services.analytics_service import AnalyticsService
-from app.services.sync_service import SyncService
+from app.config import Settings
+from app.dashboard import save_dashboard
+from app.parser import ExportParser
+from app.storage import get_previous_snapshot, list_snapshots, save_snapshot
 
-app = typer.Typer(help="Instagram Tracker CLI")
-console = Console()
-
-try:
-    sys.stdout.reconfigure(encoding="utf-8")
-except (AttributeError, OSError):
-    pass
+app = typer.Typer(help="Instagram Tracker")
 
 CONFIG_PATH = Path("config/config.json")
 IMPORT_DIR = Path("data/import")
@@ -30,222 +19,46 @@ def _load_settings() -> Settings:
     return Settings.load(CONFIG_PATH)
 
 
-def _setup_logger(settings: Settings) -> None:
-    setup_logger(settings.log_level)
-
-
-def _parse_date(value: Optional[str]) -> Optional[date]:
-    return date.fromisoformat(value) if value else None
-
-
 @app.command()
-def sync(
-    mock: bool = typer.Option(False, "--mock", help="Use mock files for testing"),
+def generate(
     import_dir: Optional[Path] = typer.Option(
         None, "--import-dir", help="Path to folder with Instagram export JSON files"
     ),
     snapshot_date: Optional[str] = typer.Option(
         None, "--date", help="Snapshot date (YYYY-MM-DD)"
     ),
+    output: Path = typer.Option(Path("index.html"), "--output", help="HTML output path"),
 ) -> None:
-    """Import followers/following from Instagram export files in data/import."""
+    """Parse Instagram export JSON files and generate an HTML dashboard."""
     settings = _load_settings()
-    _setup_logger(settings)
+    target_date = date.fromisoformat(snapshot_date) if snapshot_date else date.today()
 
-    repo = JsonRepository(Path(settings.data_dir))
+    parser = ExportParser(import_dir or IMPORT_DIR)
+    snapshot = parser.parse()
+    snapshot.date = target_date
 
-    if mock:
-        client = MockClient(
-            Path("data/mock/followers.json"), Path("data/mock/following.json")
-        )
-        source = "mock"
-    else:
-        import_path = import_dir or IMPORT_DIR
-        client = OfficialExportClient(import_path)
-        source = "official_export"
+    previous = get_previous_snapshot(target_date)
+    save_snapshot(snapshot)
 
-    service = SyncService(client, repo, settings.target_username)
-    snapshot = service.run(snapshot_date=_parse_date(snapshot_date), source=source)
-
-    console.print(f"[green]Snapshot saved: {snapshot.date}[/green]")
-    console.print(f"  Followers: {len(snapshot.followers)}")
-    console.print(f"  Following: {len(snapshot.following)}")
-    console.print(f"  Blocked: {len(snapshot.blocked)}")
-    console.print(f"  Hidden stories: {len(snapshot.hide_story_from)}")
-    console.print(f"  Recent unfollows: {len(snapshot.recently_unfollowed)}")
-    console.print(f"  Follow requests: {len(snapshot.recent_follow_requests)}")
+    save_dashboard(snapshot, previous, settings.target_username, output)
+    typer.echo(f"Dashboard saved to {output}")
+    typer.echo(f"Followers: {len(snapshot.followers)}")
+    typer.echo(f"Following: {len(snapshot.following)}")
 
 
 @app.command()
-def status() -> None:
-    """Show latest snapshot status."""
-    settings = _load_settings()
-    repo = JsonRepository(Path(settings.data_dir))
-    snapshot = repo.get_latest_snapshot()
-
-    if not snapshot:
-        console.print("[red]No snapshots found.[/red]")
-        raise typer.Exit(1)
-
-    console.print(f"[bold]Latest snapshot:[/bold] {snapshot.date}")
-    console.print(f"  Followers: {len(snapshot.followers)}")
-    console.print(f"  Following: {len(snapshot.following)}")
-    console.print(f"  Blocked: {len(snapshot.blocked)}")
-    console.print(f"  Hidden stories: {len(snapshot.hide_story_from)}")
-    console.print(f"  Recent unfollows: {len(snapshot.recently_unfollowed)}")
-    console.print(f"  Follow requests: {len(snapshot.recent_follow_requests)}")
-    console.print(f"  Source: {snapshot.source}")
-
-
-@app.command()
-def stats() -> None:
-    """Show statistics for all snapshots."""
-    settings = _load_settings()
-    repo = JsonRepository(Path(settings.data_dir))
-    snapshots = repo.list_snapshots()
-
+def history() -> None:
+    """List saved snapshots."""
+    snapshots = list_snapshots()
     if not snapshots:
-        console.print("[red]No snapshots found.[/red]")
+        typer.echo("No snapshots found.")
         raise typer.Exit(1)
-
-    table = Table(title="Snapshot Statistics")
-    table.add_column("Date")
-    table.add_column("Followers", justify="right")
-    table.add_column("Following", justify="right")
-
     for snapshot in snapshots:
-        table.add_row(
-            str(snapshot.date),
-            str(len(snapshot.followers)),
-            str(len(snapshot.following)),
-        )
-
-    console.print(table)
-
-
-@app.command()
-def history(
-    from_date: Optional[str] = typer.Option(None, "--from"),
-    to_date: Optional[str] = typer.Option(None, "--to"),
-) -> None:
-    """Show changes between snapshots."""
-    settings = _load_settings()
-    repo = JsonRepository(Path(settings.data_dir))
-    snapshots = repo.list_snapshots()
-
-    if len(snapshots) < 2:
-        console.print("[red]Need at least two snapshots for history.[/red]")
-        raise typer.Exit(1)
-
-    parsed_from = _parse_date(from_date)
-    parsed_to = _parse_date(to_date)
-    if parsed_from:
-        snapshots = [s for s in snapshots if s.date >= parsed_from]
-    if parsed_to:
-        snapshots = [s for s in snapshots if s.date <= parsed_to]
-
-    if len(snapshots) < 2:
-        console.print("[red]Not enough snapshots in the selected range.[/red]")
-        raise typer.Exit(1)
-
-    prev, curr = snapshots[-2], snapshots[-1]
-    events = AnalyticsService.diff(prev, curr)
-
-    if not events:
-        console.print("[green]No changes found.[/green]")
-        return
-
-    table = Table(title=f"Changes from {prev.date} to {curr.date}")
-    table.add_column("Type")
-    table.add_column("User")
-    table.add_column("Old")
-    table.add_column("New")
-
-    for event in events:
-        table.add_row(
-            event.event_type,
-            event.user.username,
-            event.old_value or "",
-            event.new_value or "",
-        )
-
-    console.print(table)
-
-
-@app.command()
-def lists() -> None:
-    """Show special relationship lists from the latest snapshot."""
-    settings = _load_settings()
-    repo = JsonRepository(Path(settings.data_dir))
-    snapshot = repo.get_latest_snapshot()
-
-    if not snapshot:
-        console.print("[red]No snapshots found.[/red]")
-        raise typer.Exit(1)
-
-    def _show(title: str, users: list) -> None:
-        if not users:
-            console.print(f"[green]{title}: empty[/green]")
-            return
-        table = Table(title=title)
-        table.add_column("Username")
-        table.add_column("Full name")
-        for user in users:
-            table.add_row(user.username, user.full_name or "")
-        console.print(table)
-
-    _show("Blocked profiles", snapshot.blocked)
-    _show("Hidden stories from", snapshot.hide_story_from)
-    _show("Recently unfollowed", snapshot.recently_unfollowed)
-    _show("Recent follow requests", snapshot.recent_follow_requests)
-
-
-@app.command()
-def export(
-    export_date: Optional[str] = typer.Option(None, "--date"),
-    fmt: str = typer.Option("json", "--format"),
-) -> None:
-    """Export a snapshot to JSON or CSV."""
-    settings = _load_settings()
-    repo = JsonRepository(Path(settings.data_dir))
-    date_str = (_parse_date(export_date) or date.today()).isoformat()
-    snapshot = repo.load_snapshot(date_str)
-
-    if not snapshot:
-        console.print(f"[red]Snapshot not found for {date_str}.[/red]")
-        raise typer.Exit(1)
-
-    if fmt == "json":
-        import json
-
-        out = Path(f"snapshot_{date_str}.json")
-        out.write_text(
-            json.dumps(snapshot.to_dict(), indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
-        console.print(f"[green]Exported to {out}[/green]")
-    elif fmt == "csv":
-        import csv
-
-        out = Path(f"snapshot_{date_str}.csv")
-        with out.open("w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow(["type", "id", "username", "full_name"])
-            for user in snapshot.followers:
-                writer.writerow(["follower", user.id, user.username, user.full_name])
-            for user in snapshot.following:
-                writer.writerow(["following", user.id, user.username, user.full_name])
-        console.print(f"[green]Exported to {out}[/green]")
-    else:
-        console.print("[red]Unsupported format. Use json or csv.[/red]")
-        raise typer.Exit(1)
+        typer.echo(f"{snapshot.date}: {len(snapshot.followers)} followers, {len(snapshot.following)} following")
 
 
 @app.command(name="config")
 def show_config() -> None:
     """Show current configuration."""
     settings = _load_settings()
-    console.print("[bold]Configuration[/bold]")
-    console.print(f"  target_username: {settings.target_username}")
-    console.print(f"  data_dir: {settings.data_dir}")
-    console.print(f"  log_level: {settings.log_level}")
+    typer.echo(f"target_username: {settings.target_username}")

@@ -5,9 +5,7 @@ from pydantic import BaseModel
 
 
 class Settings(BaseModel):
-    target_username: str
-    data_dir: str = "data"
-    log_level: str = "INFO"
+    target_username: str = "your_username"
 
     @classmethod
     def load(cls, path: Path = Path("config/config.json")) -> "Settings":
