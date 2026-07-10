@@ -11,7 +11,9 @@ def _users_payload(users: List[User], profiles: Optional[Dict[str, dict]] = None
         entry = {"username": u.username, "full_name": u.full_name or ""}
         if profiles and u.username in profiles:
             p = profiles[u.username]
-            if p.get("avatar_url"):
+            if p.get("avatar_local"):
+                entry["avatar_url"] = p["avatar_local"]
+            elif p.get("avatar_url"):
                 entry["avatar_url"] = p["avatar_url"]
             if p.get("full_name"):
                 entry["full_name"] = p["full_name"]

@@ -1,3 +1,6 @@
+import os
+import subprocess
+import sys
 from datetime import date
 from pathlib import Path
 from typing import Optional
@@ -6,7 +9,7 @@ import typer
 
 from app.config import Settings
 from app.dashboard import save_dashboard
-from app.enricher import enrich_profiles, get_profiles
+from app.enricher import get_profiles, get_stale_count
 from app.parser import ExportParser
 from app.storage import list_snapshots, save_snapshot
 
@@ -20,6 +23,17 @@ def _load_settings() -> Settings:
     return Settings.load(CONFIG_PATH)
 
 
+def _start_background_fetch(import_dir: Path) -> None:
+    """Start avatar fetching in a detached background process."""
+    subprocess.Popen(
+        [sys.executable, str(Path(__file__).parent / "background_fetch.py"), str(import_dir)],
+        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        close_fds=True,
+    )
+
+
 @app.command()
 def generate(
     import_dir: Optional[Path] = typer.Option(
@@ -29,12 +43,14 @@ def generate(
         None, "--date", help="Snapshot date (YYYY-MM-DD)"
     ),
     output: Path = typer.Option(Path("index.html"), "--output", help="HTML output path"),
+    no_fetch: bool = typer.Option(False, "--no-fetch", help="Skip background avatar fetching"),
 ) -> None:
     """Parse Instagram export JSON files and generate an HTML dashboard."""
     settings = _load_settings()
     target_date = date.fromisoformat(snapshot_date) if snapshot_date else date.today()
+    import_path = import_dir or IMPORT_DIR
 
-    parser = ExportParser(import_dir or IMPORT_DIR)
+    parser = ExportParser(import_path)
     snapshot = parser.parse()
     snapshot.date = target_date
 
@@ -47,7 +63,19 @@ def generate(
     typer.echo(f"Followers: {len(snapshot.followers)}")
     typer.echo(f"Following: {len(snapshot.following)}")
     if profiles:
-        typer.echo(f"Profiles cache: {len(profiles)} (avatars and names)")
+        with_avatars = sum(1 for p in profiles.values() if p.get("avatar_local"))
+        typer.echo(f"Profiles cache: {len(profiles)} ({with_avatars} with avatars)")
+
+    # Start background avatar fetching
+    if not no_fetch:
+        stale = get_stale_count(snapshot)
+        if stale > 0:
+            typer.echo(f"Starting background fetch for {stale} profiles...")
+            _start_background_fetch(import_path)
+            typer.echo("Avatars will be downloaded in the background.")
+            typer.echo("Run 'generate' again later to update the dashboard.")
+        else:
+            typer.echo("All avatars are up to date.")
 
 
 @app.command()
@@ -61,16 +89,15 @@ def fetch(
     ),
     force: bool = typer.Option(False, "--force", help="Re-fetch all profiles, even cached ones"),
 ) -> None:
-    """Fetch avatars and full names from Instagram profiles (no login required)."""
+    """Fetch avatars and full names from Instagram profiles (foreground)."""
+    from app.enricher import enrich_profiles
+
     parser = ExportParser(import_dir or IMPORT_DIR)
     snapshot = parser.parse()
     snapshot.date = date.today()
 
     total_users = len({u.username for u in snapshot.followers + snapshot.following})
     typer.echo(f"Fetching profile data for {total_users} users...")
-    typer.echo(f"Delay: {delay}s between requests")
-    if limit:
-        typer.echo(f"Limit: {limit} profiles")
     typer.echo("")
 
     result = enrich_profiles(snapshot, delay=delay, limit=limit, force=force)
