@@ -9,7 +9,7 @@ def _users_payload(users: List[User]) -> List[Dict[str, str]]:
     return [{"username": u.username, "full_name": u.full_name or ""} for u in users]
 
 
-def _build_payload(snapshot: Snapshot, previous: Optional[Snapshot], username: str) -> dict:
+def _build_payload(snapshot: Snapshot, all_snapshots: List[Snapshot], username: str) -> dict:
     follower_ids = {u.id for u in snapshot.followers}
     following_ids = {u.id for u in snapshot.following}
 
@@ -17,21 +17,16 @@ def _build_payload(snapshot: Snapshot, previous: Optional[Snapshot], username: s
     fans = [u for u in snapshot.followers if u.id not in following_ids]
     mutual = [u for u in snapshot.followers if u.id in following_ids]
 
-    changes = None
-    if previous:
-        prev_follower_ids = {u.id for u in previous.followers}
-        prev_following_ids = {u.id for u in previous.following}
-        new_followers = [u for u in snapshot.followers if u.id not in prev_follower_ids]
-        lost_followers = [u for u in previous.followers if u.id not in follower_ids]
-        new_following = [u for u in snapshot.following if u.id not in prev_following_ids]
-        lost_following = [u for u in previous.following if u.id not in following_ids]
-        changes = {
-            "previous_date": previous.date.isoformat(),
-            "new_followers": _users_payload(new_followers),
-            "lost_followers": _users_payload(lost_followers),
-            "new_following": _users_payload(new_following),
-            "lost_following": _users_payload(lost_following),
-        }
+    # All snapshots except current, for comparison on the client side
+    snapshots_data = []
+    for s in all_snapshots:
+        if s.date == snapshot.date:
+            continue
+        snapshots_data.append({
+            "date": s.date.isoformat(),
+            "followers": _users_payload(s.followers),
+            "following": _users_payload(s.following),
+        })
 
     return {
         "username": username,
@@ -58,13 +53,7 @@ def _build_payload(snapshot: Snapshot, previous: Optional[Snapshot], username: s
             "recently_unfollowed": _users_payload(snapshot.recently_unfollowed),
             "recent_follow_requests": _users_payload(snapshot.recent_follow_requests),
         },
-        "changes": changes,
-        "change_lists": {
-            "new_followers": _users_payload(new_followers) if previous else [],
-            "lost_followers": _users_payload(lost_followers) if previous else [],
-            "new_following": _users_payload(new_following) if previous else [],
-            "lost_following": _users_payload(lost_following) if previous else [],
-        } if previous else {},
+        "snapshots": snapshots_data,
     }
 
 
@@ -107,15 +96,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
   /* Sidebar */
   .sidebar {
-    width: 264px;
-    flex-shrink: 0;
-    background: var(--bg-soft);
-    border-right: 1px solid var(--border);
-    padding: 1.5rem 1rem;
-    position: sticky;
-    top: 0;
-    height: 100vh;
-    overflow-y: auto;
+    width: 264px; flex-shrink: 0;
+    background: var(--bg-soft); border-right: 1px solid var(--border);
+    padding: 1.5rem 1rem; position: sticky; top: 0; height: 100vh; overflow-y: auto;
   }
   .brand { display: flex; align-items: center; gap: 0.65rem; padding: 0 0.5rem 1.25rem; }
   .brand .logo {
@@ -152,6 +135,26 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .topbar .meta { color: var(--muted); font-size: 0.9rem; margin-top: 0.25rem; }
   .pill { display: inline-flex; align-items: center; gap: 0.4rem; background: var(--card); border: 1px solid var(--border); padding: 0.4rem 0.8rem; border-radius: 999px; font-size: 0.85rem; color: var(--muted); }
 
+  /* Period selector */
+  .period-bar {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 0.85rem 1.1rem; margin-bottom: 1.75rem; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
+  }
+  .period-bar .label { color: var(--muted); font-size: 0.85rem; font-weight: 600; }
+  .period-btn {
+    background: var(--bg-soft); border: 1px solid var(--border); color: var(--muted);
+    padding: 0.4rem 0.85rem; border-radius: 8px; cursor: pointer; font-size: 0.85rem; transition: all 0.15s;
+  }
+  .period-btn:hover { color: var(--text); border-color: var(--accent); }
+  .period-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .period-select {
+    background: var(--bg-soft); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 0.4rem 0.6rem; font-size: 0.85rem; cursor: pointer; outline: none;
+  }
+  .period-select:focus { border-color: var(--accent); }
+  .period-info { color: var(--muted); font-size: 0.82rem; margin-left: auto; }
+  .period-bar.hidden { display: none; }
+
   /* Stat cards */
   .stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.75rem; }
   .stat {
@@ -174,6 +177,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .change-card .label { color: var(--muted); font-size: 0.82rem; margin-top: 0.2rem; }
   .change-card.up { border-left: 3px solid var(--success); }
   .change-card.down { border-left: 3px solid var(--danger); }
+  .change-card.clickable { cursor: pointer; transition: all 0.15s; }
+  .change-card.clickable:hover { background: var(--card-hover); }
 
   /* Panel */
   .panel { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
@@ -249,8 +254,19 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       <div class="pill">📅 <span id="date-pill"></span></div>
     </div>
 
-    <div class="mobile-nav" id="mobile-nav"></div>
+    <div class="period-bar" id="period-bar">
+      <span class="label">Сравнить с:</span>
+      <button class="period-btn" data-days="7">Неделя</button>
+      <button class="period-btn" data-days="30">Месяц</button>
+      <button class="period-btn" data-days="90">3 месяца</button>
+      <button class="period-btn" data-days="180">6 месяцев</button>
+      <button class="period-btn" data-days="365">Год</button>
+      <button class="period-btn" data-days="99999">Всё время</button>
+      <select class="period-select" id="period-select"><option value="">— конкретный снимок —</option></select>
+      <span class="period-info" id="period-info"></span>
+    </div>
 
+    <div class="mobile-nav" id="mobile-nav"></div>
     <div id="views"></div>
   </main>
 </div>
@@ -263,10 +279,10 @@ const TABS = [
   { key: "not_following_back", label: "Не подписаны на меня", ico: "💔", group: "Анализ", desc: "Вы подписаны на них, но они не подписаны на вас." },
   { key: "fans", label: "Фанаты", ico: "⭐", group: "Анализ", desc: "Подписаны на вас, но вы не подписаны на них." },
   { key: "mutual", label: "Взаимные", ico: "🤝", group: "Анализ", desc: "Вы подписаны друг на друга." },
-  { key: "new_followers", label: "Новые подписчики", ico: "🆕", group: "Изменения", desc: "Подписались на вас с прошлого снимка.", requiresChanges: true },
-  { key: "lost_followers", label: "Отписались от меня", ico: "📉", group: "Изменения", desc: "Отписались от вас с прошлого снимка.", requiresChanges: true },
-  { key: "new_following", label: "Новые подписки", ico: "➕", group: "Изменения", desc: "Вы подписались на них с прошлого снимка.", requiresChanges: true },
-  { key: "lost_following", label: "Вы отписались", ico: "➖", group: "Изменения", desc: "Вы отписались от них с прошлого снимка.", requiresChanges: true },
+  { key: "new_followers", label: "Новые подписчики", ico: "🆕", group: "Изменения", desc: "Подписались на вас за выбранный период.", requiresChanges: true },
+  { key: "lost_followers", label: "Отписались от меня", ico: "📉", group: "Изменения", desc: "Отписались от вас за выбранный период.", requiresChanges: true },
+  { key: "new_following", label: "Новые подписки", ico: "➕", group: "Изменения", desc: "Вы подписались на них за выбранный период.", requiresChanges: true },
+  { key: "lost_following", label: "Вы отписались", ico: "➖", group: "Изменения", desc: "Вы отписались от них за выбранный период.", requiresChanges: true },
   { key: "followers", label: "Подписчики", ico: "👥", group: "Списки" },
   { key: "following", label: "Подписки", ico: "➕", group: "Списки" },
   { key: "recently_unfollowed", label: "Недавно отписаны", ico: "🚪", group: "Списки", desc: "Профили, от которых вы недавно отписались." },
@@ -275,31 +291,93 @@ const TABS = [
   { key: "blocked", label: "Заблокированы", ico: "🚫", group: "Списки" },
 ];
 
-const AVATAR_COLORS = [
-  "#6366f1","#a855f7","#ec4899","#f43f5e","#f59e0b",
-  "#10b981","#14b8a6","#38bdf8","#8b5cf6","#0ea5e9"
-];
-function avatarColor(name){
-  let h = 0;
-  for (let i=0;i<name.length;i++) h = name.charCodeAt(i) + ((h<<5)-h);
-  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
-}
-function initials(user){
-  const src = (user.full_name || user.username || "?").trim();
-  return src.charAt(0).toUpperCase();
-}
+const AVATAR_COLORS = ["#6366f1","#a855f7","#ec4899","#f43f5e","#f59e0b","#10b981","#14b8a6","#38bdf8","#8b5cf6","#0ea5e9"];
+function avatarColor(name){ let h=0; for(let i=0;i<name.length;i++) h=name.charCodeAt(i)+((h<<5)-h); return AVATAR_COLORS[Math.abs(h)%AVATAR_COLORS.length]; }
+function initials(user){ return (user.full_name||user.username||"?").trim().charAt(0).toUpperCase(); }
 function esc(s){ return (s||"").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 let searchState = {};
+let currentCompare = null;  // snapshot object or null
+let currentTab = "overview";
 
+/* ---- Change computation (client-side) ---- */
+function computeChanges(compareSnap){
+  if (!compareSnap) return null;
+  const curF = new Set(DATA.lists.followers.map(u => u.username));
+  const curG = new Set(DATA.lists.following.map(u => u.username));
+  const prevF = new Set(compareSnap.followers.map(u => u.username));
+  const prevG = new Set(compareSnap.following.map(u => u.username));
+  const newFollowers = DATA.lists.followers.filter(u => !prevF.has(u.username));
+  const lostFollowers = compareSnap.followers.filter(u => !curF.has(u.username));
+  const newFollowing = DATA.lists.following.filter(u => !prevG.has(u.username));
+  const lostFollowing = compareSnap.following.filter(u => !curG.has(u.username));
+  return {
+    previous_date: compareSnap.date,
+    new_followers: newFollowers,
+    lost_followers: lostFollowers,
+    new_following: newFollowing,
+    lost_following: lostFollowing,
+  };
+}
+
+function changeLists(){
+  if (!currentCompare) return {};
+  const ch = computeChanges(currentCompare);
+  return {
+    new_followers: ch.new_followers,
+    lost_followers: ch.lost_followers,
+    new_following: ch.new_following,
+    lost_following: ch.lost_following,
+  };
+}
+
+function hasChanges(){ return !!currentCompare; }
+
+/* ---- Period selection ---- */
+function findSnapshotByDays(days){
+  const cur = new Date(DATA.date);
+  const target = new Date(cur); target.setDate(target.getDate() - days);
+  // find snapshot closest to target date but before current
+  const candidates = DATA.snapshots.filter(s => s.date < DATA.date);
+  if (candidates.length === 0) return null;
+  let best = candidates[0], bestDiff = Infinity;
+  for (const s of candidates){
+    const sd = new Date(s.date);
+    const diff = Math.abs(sd - target);
+    if (diff < bestDiff){ bestDiff = diff; best = s; }
+  }
+  return best;
+}
+
+function setCompareByDays(days){
+  const snap = findSnapshotByDays(days);
+  currentCompare = snap;
+  updatePeriodInfo();
+  refreshUI();
+}
+
+function setCompareByDate(dateStr){
+  if (!dateStr){ currentCompare = null; updatePeriodInfo(); refreshUI(); return; }
+  currentCompare = DATA.snapshots.find(s => s.date === dateStr) || null;
+  updatePeriodInfo();
+  refreshUI();
+}
+
+function updatePeriodInfo(){
+  const el = document.getElementById("period-info");
+  if (!currentCompare){ el.textContent = ""; return; }
+  const days = Math.round((new Date(DATA.date) - new Date(currentCompare.date)) / 86400000);
+  el.textContent = "Снимок от " + currentCompare.date + " (" + days + " дн.)";
+}
+
+/* ---- Rendering ---- */
 function renderRows(key, users, filter){
   const q = (filter||"").toLowerCase().trim();
   const filtered = q
     ? users.filter(u => u.username.toLowerCase().includes(q) || (u.full_name||"").toLowerCase().includes(q))
     : users;
   if (filtered.length === 0){
-    if (users.length === 0)
-      return '<div class="empty"><div class="big">🎉</div>Список пуст</div>';
+    if (users.length === 0) return '<div class="empty"><div class="big">🎉</div>Список пуст</div>';
     return '<div class="empty"><div class="big">🔍</div>Ничего не найдено</div>';
   }
   return filtered.map((u, i) => `
@@ -315,7 +393,7 @@ function renderRows(key, users, filter){
 }
 
 function listView(tab){
-  const source = tab.requiresChanges ? (DATA.change_lists||{}) : DATA.lists;
+  const source = tab.requiresChanges ? changeLists() : DATA.lists;
   const users = source[tab.key] || [];
   const desc = tab.desc ? `<div class="desc">${tab.desc}</div>` : "";
   return `
@@ -335,7 +413,7 @@ function listView(tab){
 function onSearch(key, value){
   searchState[key] = value;
   const tab = TABS.find(t => t.key === key);
-  const source = tab && tab.requiresChanges ? (DATA.change_lists||{}) : DATA.lists;
+  const source = tab && tab.requiresChanges ? changeLists() : DATA.lists;
   const el = document.getElementById("list-"+key);
   if (el) el.innerHTML = renderRows(key, source[key]||[], value);
 }
@@ -357,7 +435,7 @@ function statCard(key, label, ico, value, opts={}){
 
 function overviewView(){
   const c = DATA.counts;
-  const ch = DATA.changes;
+  const ch = currentCompare ? computeChanges(currentCompare) : null;
   const fDelta = ch ? ch.new_followers.length - ch.lost_followers.length : null;
   const gDelta = ch ? ch.new_following.length - ch.lost_following.length : null;
 
@@ -368,14 +446,14 @@ function overviewView(){
         Изменения с ${ch.previous_date}
       </h3>
       <div class="changes">
-        <div class="change-card up" style="cursor:pointer" onclick="go('new_followers')"><div class="value">+${ch.new_followers.length}</div><div class="label">Новые подписчики →</div></div>
-        <div class="change-card down" style="cursor:pointer" onclick="go('lost_followers')"><div class="value">−${ch.lost_followers.length}</div><div class="label">Отписались от вас →</div></div>
-        <div class="change-card up" style="cursor:pointer" onclick="go('new_following')"><div class="value">+${ch.new_following.length}</div><div class="label">Новые подписки →</div></div>
-        <div class="change-card down" style="cursor:pointer" onclick="go('lost_following')"><div class="value">−${ch.lost_following.length}</div><div class="label">Вы отписались →</div></div>
+        <div class="change-card up clickable" onclick="go('new_followers')"><div class="value">+${ch.new_followers.length}</div><div class="label">Новые подписчики →</div></div>
+        <div class="change-card down clickable" onclick="go('lost_followers')"><div class="value">−${ch.lost_followers.length}</div><div class="label">Отписались от вас →</div></div>
+        <div class="change-card up clickable" onclick="go('new_following')"><div class="value">+${ch.new_following.length}</div><div class="label">Новые подписки →</div></div>
+        <div class="change-card down clickable" onclick="go('lost_following')"><div class="value">−${ch.lost_following.length}</div><div class="label">Вы отписались →</div></div>
       </div>`;
   } else {
     changesHtml = `<div class="panel" style="padding:1.1rem 1.25rem;margin-bottom:1.75rem;color:var(--muted);">
-      ℹ️ Это первый снимок. Сделайте новый экспорт позже, чтобы увидеть, кто подписался и отписался.
+      ℹ️ Нет снимка для сравнения. Сделайте новый экспорт позже, чтобы увидеть, кто подписался и отписался.
     </div>`;
   }
 
@@ -394,63 +472,116 @@ function overviewView(){
   return `<div class="stats">${stats}</div>${changesHtml}`;
 }
 
-function render(){
-  document.getElementById("account").textContent = "Аккаунт: @" + DATA.username;
-  document.getElementById("meta").textContent = `${DATA.counts.followers} подписчиков · ${DATA.counts.following} подписок`;
-  document.getElementById("date-pill").textContent = DATA.date;
+function visibleTabs(){
+  return TABS.filter(t => !t.requiresChanges || hasChanges());
+}
 
-  const hasChanges = !!DATA.changes;
-  const visibleTabs = TABS.filter(t => !t.requiresChanges || hasChanges);
-
-  // nav
+function renderNav(){
   const nav = document.getElementById("nav");
   const mnav = document.getElementById("mobile-nav");
-  let lastGroup = null;
-  let navHtml = "";
-  visibleTabs.forEach(tab => {
+  let lastGroup = null, navHtml = "";
+  visibleTabs().forEach(tab => {
     if (tab.group !== lastGroup){ navHtml += `<div class="nav-group-label">${tab.group}</div>`; lastGroup = tab.group; }
-    const source = tab.requiresChanges ? (DATA.change_lists||{}) : DATA.lists;
+    const source = tab.requiresChanges ? changeLists() : DATA.lists;
     const badge = tab.key === "overview" ? "" : `<span class="badge">${(source[tab.key]||[]).length}</span>`;
     navHtml += `<button class="nav-item" data-tab="${tab.key}" onclick="go('${tab.key}')"><span class="ico">${tab.ico}</span>${tab.label}${badge}</button>`;
   });
   nav.innerHTML = navHtml;
-  mnav.innerHTML = visibleTabs.map(tab =>
+  mnav.innerHTML = visibleTabs().map(tab =>
     `<button class="nav-item" data-tab="${tab.key}" onclick="go('${tab.key}')"><span class="ico">${tab.ico}</span>${tab.label}</button>`
   ).join("");
-
-  // views
-  const views = document.getElementById("views");
-  views.innerHTML = visibleTabs.map(tab =>
-    `<div class="view" id="view-${tab.key}">${tab.key === "overview" ? overviewView() : listView(tab)}</div>`
-  ).join("");
-
-  go(location.hash ? location.hash.slice(1) : "overview");
 }
 
-function go(key){
-  const hasChanges = !!DATA.changes;
-  const valid = TABS.find(t => t.key === key && (!t.requiresChanges || hasChanges));
-  if (!valid) key = "overview";
+function renderViews(){
+  const views = document.getElementById("views");
+  views.innerHTML = visibleTabs().map(tab =>
+    `<div class="view" id="view-${tab.key}">${tab.key === "overview" ? overviewView() : listView(tab)}</div>`
+  ).join("");
+}
+
+function refreshUI(){
+  renderNav();
+  renderViews();
+  // restore active tab if still visible, else overview
+  if (!visibleTabs().find(t => t.key === currentTab)) currentTab = "overview";
+  go(currentTab, true);
+}
+
+function go(key, skipScroll){
+  if (!visibleTabs().find(t => t.key === key)) key = "overview";
+  currentTab = key;
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
   const view = document.getElementById("view-"+key);
   if (view) view.classList.add("active");
   document.querySelectorAll(".nav-item").forEach(n => n.classList.toggle("active", n.dataset.tab === key));
   history.replaceState(null, "", "#"+key);
-  window.scrollTo({top:0, behavior:"smooth"});
+  if (!skipScroll) window.scrollTo({top:0, behavior:"smooth"});
 }
 
-render();
+/* ---- Init ---- */
+function initPeriodBar(){
+  const bar = document.getElementById("period-bar");
+  const select = document.getElementById("period-select");
+
+  if (DATA.snapshots.length === 0){
+    bar.classList.add("hidden");
+    return;
+  }
+
+  // populate dropdown
+  DATA.snapshots.forEach(s => {
+    const opt = document.createElement("option");
+    opt.value = s.date;
+    opt.textContent = s.date + " (" + s.followers.length + " подп., " + s.following.length + " подписок)";
+    select.appendChild(opt);
+  });
+
+  // period buttons
+  document.querySelectorAll(".period-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".period-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      select.value = "";
+      setCompareByDays(parseInt(btn.dataset.days));
+    });
+  });
+
+  select.addEventListener("change", () => {
+    document.querySelectorAll(".period-btn").forEach(b => b.classList.remove("active"));
+    setCompareByDate(select.value);
+  });
+
+  // default: previous snapshot
+  const prev = DATA.snapshots.filter(s => s.date < DATA.date).pop();
+  if (prev){
+    currentCompare = prev;
+    // activate "Всё время" if prev is the oldest, else just set dropdown
+    select.value = prev.date;
+    updatePeriodInfo();
+  }
+}
+
+function init(){
+  document.getElementById("account").textContent = "Аккаунт: @" + DATA.username;
+  document.getElementById("meta").textContent = `${DATA.counts.followers} подписчиков · ${DATA.counts.following} подписок`;
+  document.getElementById("date-pill").textContent = DATA.date;
+  initPeriodBar();
+  refreshUI();
+  go(location.hash ? location.hash.slice(1) : "overview");
+}
+
+init();
 </script>
 </body>
 </html>"""
 
 
-def generate_html(snapshot: Snapshot, previous: Optional[Snapshot], username: str) -> str:
-    payload = _build_payload(snapshot, previous, username)
+def generate_html(snapshot: Snapshot, all_snapshots: List[Snapshot], username: str) -> str:
+    payload = _build_payload(snapshot, all_snapshots, username)
     data_json = json.dumps(payload, ensure_ascii=False)
     return HTML_TEMPLATE.replace("__DATA__", data_json)
 
 
-def save_dashboard(snapshot: Snapshot, previous: Optional[Snapshot], username: str, out: Path = Path("index.html")) -> None:
-    html = generate_html(snapshot, previous, username)
+def save_dashboard(snapshot: Snapshot, all_snapshots: List[Snapshot], username: str, out: Path = Path("index.html")) -> None:
+    html = generate_html(snapshot, all_snapshots, username)
     out.write_text(html, encoding="utf-8")
