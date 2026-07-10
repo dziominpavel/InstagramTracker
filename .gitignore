@@ -21,6 +21,8 @@ data/import/*
 data/snapshots/*
 !data/snapshots/.gitkeep
 data/profiles.json
+data/avatars/*
+!data/avatars/.gitkeep
 
 # Generated dashboard
 index.html
