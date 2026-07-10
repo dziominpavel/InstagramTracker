@@ -95,11 +95,12 @@ class InstagrapiClient:
         """Handle Instagram challenge. Native flow requires manual confirmation."""
         challenge = getattr(exc, "challenge", None) or {}
         if challenge.get("native_flow"):
-            raise RuntimeError(
-                "Instagram requires manual confirmation. "
-                "Open the Instagram app or website, approve the login attempt, "
-                "then run login.bat again."
-            )
+            url = challenge.get("url")
+            msg = "Instagram requires manual confirmation. "
+            if url:
+                msg += f"Open this URL in your browser and follow the steps: {url} "
+            msg += "Then run login.bat again."
+            raise RuntimeError(msg)
         code = self.code_callback("Enter Instagram challenge code (6 digits): ")
         try:
             self._client.challenge_code_handler(self.username, choice=None)
