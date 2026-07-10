@@ -10,7 +10,8 @@ from app.models import Snapshot
 
 PROFILES_PATH = Path("data/profiles.json")
 AVATARS_DIR = Path("data/avatars")
-CACHE_DAYS = 180  # re-fetch avatar if older than this
+METADATA_CACHE_DAYS = 30   # re-fetch name/stats if older than this
+AVATAR_CACHE_DAYS = 90     # re-download avatar image if older than this
 
 
 def _load_cache() -> Dict[str, dict]:
@@ -51,28 +52,42 @@ def _extract_stats(desc: str) -> dict:
     }
 
 
-def _is_cache_valid(entry: dict) -> bool:
-    """Check if cached profile is still fresh (within CACHE_DAYS)."""
-    if not entry:
-        return False
+def _age_days(entry: dict) -> int:
+    """How many days since this profile was cached."""
     cached_date = entry.get("cached_at")
     if not cached_date:
-        return False
+        return 9999
     try:
         d = datetime.fromisoformat(cached_date).date()
-        return (date.today() - d).days < CACHE_DAYS
+        return (date.today() - d).days
     except (ValueError, TypeError):
-        return False
+        return 9999
 
 
 def _needs_fetch(username: str, cache: Dict[str, dict]) -> bool:
     """Check if we need to fetch this profile."""
     entry = cache.get(username)
-    if not _is_cache_valid(entry):
+    if not entry:
+        return True  # not in cache at all
+
+    # Profiles with errors (login_wall, timeout) — retry every time
+    if entry.get("error"):
         return True
-    # Check if avatar file exists
-    if not _avatar_path(username).exists():
+
+    age = _age_days(entry)
+
+    # Metadata (name, stats) — refresh after METADATA_CACHE_DAYS
+    if age >= METADATA_CACHE_DAYS:
         return True
+
+    # Avatar file missing — need to download
+    if entry.get("avatar_local") and not _avatar_path(username).exists():
+        return True
+
+    # Avatar itself — refresh after AVATAR_CACHE_DAYS
+    if age >= AVATAR_CACHE_DAYS:
+        return True
+
     return False
 
 
@@ -117,7 +132,7 @@ def _download_avatar_via_page(page, url: str, username: str) -> bool:
         return False
 
 
-def _fetch_single(page, username: str) -> dict:
+def _fetch_single(page, username: str, cache_entry: dict = None) -> dict:
     """Fetch a single profile via Playwright page object."""
     url = f"https://www.instagram.com/{username}/"
     page.goto(url, wait_until="networkidle", timeout=25000)
@@ -157,15 +172,21 @@ def _fetch_single(page, username: str) -> dict:
     stats = _extract_stats(desc or "")
 
     # Download avatar image locally (via Playwright session)
+    # Only re-download if avatar file doesn't exist or is older than AVATAR_CACHE_DAYS
     avatar_downloaded = False
-    if pic:
+    avatar_file = _avatar_path(username)
+    cached_age = _age_days(cache_entry) if cache_entry else 9999
+    need_avatar_download = (not avatar_file.exists()) or (cached_age >= AVATAR_CACHE_DAYS)
+    if pic and need_avatar_download:
         avatar_downloaded = _download_avatar_via_page(page, pic, username)
+    elif avatar_file.exists():
+        avatar_downloaded = True  # keep existing file
 
     return {
         "username": username,
         "full_name": full_name,
         "avatar_url": pic or "",
-        "avatar_local": f"data/avatars/{username}.jpg" if avatar_downloaded else "",
+        "avatar_local": f"data/avatars/{username}.jpg" if (avatar_downloaded or avatar_file.exists()) else "",
         "followers_count": stats.get("followers_count"),
         "following_count": stats.get("following_count"),
         "posts_count": stats.get("posts_count"),
@@ -218,7 +239,7 @@ def enrich_profiles(
 
         for i, username in enumerate(to_fetch):
             try:
-                result = _fetch_single(page, username)
+                result = _fetch_single(page, username, cache.get(username))
                 cache[username] = result
                 fetched += 1
                 status = "OK" if result.get("avatar_local") else "no-pic"
