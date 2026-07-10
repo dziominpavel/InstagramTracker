@@ -1,13 +1,13 @@
 # Instagram Tracker
 
-Pet-проект для отслеживания изменений подписчиков и подписок в Instagram через официальный экспорт данных.
+Простой трекер подписчиков/подписок Instagram через официальный экспорт данных.
 
-## Как это работает
+## Как работает
 
-1. Заказываешь официальный архив данных в Instagram.
-2. Кладешь zip-архив в корень проекта.
-3. Запускаешь `python main.py sync` — программа сама разархивирует и импортирует followers/following.
-4. Сравниваешь снимки через `python main.py history`.
+1. Скачиваешь официальный архив данных из Instagram.
+2. Копируешь папку `connections` из архива в папку `data/import` проекта.
+3. Запускаешь `python main.py sync` — данные записываются в снимок.
+4. Через время повторяешь и сравниваешь через `python main.py history`.
 
 ## Быстрый старт
 
@@ -16,9 +16,9 @@ python -m venv .venv
 .venv\Scripts\pip.exe install -r requirements.txt
 ```
 
-Открой `config/config.json` и укажи `target_username`.
+В `config/config.json` укажи `target_username`.
 
-### Скачать архив данных Instagram
+## Скачать архив Instagram
 
 Перейди по ссылке:
 
@@ -27,54 +27,66 @@ https://accountscenter.instagram.com/info_and_permissions/dyi/
 ```
 
 Выбери:
-- аккаунт Instagram,
+- свой Instagram-аккаунт,
 - формат **JSON**,
-- диапазон данных — можно сразу "All time".
+- диапазон — "All time".
 
-Архив придет письмом. Скачай zip и положи в корень проекта.
+Архив придет письмом. Скачай и разархивируй.
 
-### Импорт и анализ
+## Импорт данных
+
+Нужна только папка `connections` из архива. Скопируй её содержимое в `data/import`:
+
+```text
+data/import/
+  followers_1.json
+  following.json
+  recently_unfollowed_profiles.json
+```
+
+Запускаешь:
+
+```bash
+python main.py sync
+```
+
+Программа создаст снимок в `data/snapshots/`.
+
+## Команды
+
+```bash
+python main.py sync              # импорт из data/import
+python main.py status            # последний снимок
+python main.py stats             # статистика
+python main.py history           # изменения между снимками
+python main.py report            # отчет
+python main.py export            # экспорт снимка в JSON/CSV
+python main.py config            # конфигурация
+```
+
+## Пример работы
 
 ```bash
 python main.py sync
 python main.py status
-python main.py stats
 python main.py history
 ```
-
-Если нужно указать дату снимка:
-
-```bash
-python main.py sync --date 2026-07-10
-```
-
-## Команды
-
-| Команда | Описание |
-|---------|----------|
-| `sync` | Импортировать followers/following из официального архива. |
-| `status` | Последний сохраненный снимок. |
-| `stats` | Статистика по всем снимкам. |
-| `history` | Изменения между двумя последними снимками. |
-| `report` | Отчет за дату. |
-| `export` | Экспорт снимка в JSON или CSV. |
-| `config` | Текущая конфигурация. |
 
 ## Структура
 
 ```
 instagram-tracker/
 ├── app/
-│   ├── clients/          # InstagramClient + OfficialExportClient + MockClient
+│   ├── clients/          # OfficialExportClient + MockClient
 │   ├── config/           # Settings + logger
 │   ├── models/           # User, Snapshot, Event
-│   ├── repositories/    # JsonRepository
-│   ├── services/         # SyncService, AnalyticsService, ReportService
-│   └── main.py           # Typer CLI
+│   ├── repositories/     # JsonRepository
+│   ├── services/         # Sync, Analytics, Report
+│   └── main.py           # CLI
 ├── config/
-│   └── config.json       # target_username и настройки
+│   └── config.json       # target_username
 ├── data/
-│   ├── export/           # zip-архивы и разархивированные данные
+│   ├── import/           # сюда копируешь JSON из Instagram
 │   ├── snapshots/        # сохраненные снимки
 │   └── reports/          # отчеты
 ├── logs/
@@ -83,18 +95,12 @@ instagram-tracker/
 └── requirements.txt
 ```
 
-## Архитектура
-
-- `Repository` — интерфейс хранилища. Сейчас `JsonRepository`, в будущем можно заменить на `SQLiteRepository`.
-- `AnalyticsService` не знает про Instagram: ему нужны только `Snapshot` и `User`.
-- `OfficialExportClient` читает `followers_*.json` и `following.json` из официального архива.
-
 ## Тесты
 
 ```bash
 pytest tests -v
 ```
 
-## Ограничение официального архива
+## Ограничение
 
-Instagram не включает `user_id` в файлы followers/following. Вместо этого используется `username` как ключ. Если человек сменит ник, программа посчитает его новым пользователем. Это ограничение самого Instagram, а не программы.
+Instagram не включает `user_id` в файлы `followers_1.json` и `following.json`. Поэтому в качестве ключа используется `username`. Если человек сменит ник, программа посчитает его новым пользователем.

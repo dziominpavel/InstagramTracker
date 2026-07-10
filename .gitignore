@@ -16,8 +16,8 @@ venv/
 env/
 
 # Application data
-data/export/*
-!data/export/.gitkeep
+data/import/*
+!data/import/.gitkeep
 data/snapshots/*
 !data/snapshots/.gitkeep
 data/reports/*

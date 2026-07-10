@@ -2,21 +2,25 @@ import json
 from pathlib import Path
 from typing import List
 
-from app.clients.instagram_client import InstagramClient
 from app.models.user import User
 
 
+DEFAULT_IMPORT_DIR = Path("data/import")
+
+
 class OfficialExportClient:
-    def __init__(self, export_dir: Path):
-        self.export_dir = Path(export_dir)
+    def __init__(self, import_dir: Path = DEFAULT_IMPORT_DIR):
+        self.import_dir = Path(import_dir)
 
     def login(self) -> None:
         pass
 
     def _find_file(self, pattern: str) -> Path:
-        matches = list(self.export_dir.rglob(pattern))
+        matches = sorted(self.import_dir.glob(pattern))
         if not matches:
-            raise FileNotFoundError(f"Export file not found: {pattern} in {self.export_dir}")
+            raise FileNotFoundError(
+                f"Export file not found: {pattern} in {self.import_dir}"
+            )
         return matches[0]
 
     def _parse_username(self, href: str) -> str:
@@ -29,7 +33,9 @@ class OfficialExportClient:
         users: List[User] = []
         for item in data:
             for entry in item.get("string_list_data", []):
-                username = entry.get("value") or self._parse_username(entry.get("href", ""))
+                username = entry.get("value") or self._parse_username(
+                    entry.get("href", "")
+                )
                 if username:
                     users.append(
                         User(

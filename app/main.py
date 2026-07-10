@@ -1,13 +1,11 @@
 from datetime import date
 from pathlib import Path
 from typing import Optional
-from zipfile import ZipFile
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
-from app.clients.archive_client import ArchiveClient
 from app.clients.mock_client import MockClient
 from app.clients.official_export_client import OfficialExportClient
 from app.config import Settings, setup_logger
@@ -20,7 +18,7 @@ app = typer.Typer(help="Instagram Tracker CLI")
 console = Console()
 
 CONFIG_PATH = Path("config/config.json")
-RAW_EXPORT_DIR = Path("data/export/raw")
+IMPORT_DIR = Path("data/import")
 
 
 def _load_settings() -> Settings:
@@ -35,48 +33,17 @@ def _parse_date(value: Optional[str]) -> Optional[date]:
     return date.fromisoformat(value) if value else None
 
 
-def _extract_zip_to_raw() -> Optional[Path]:
-    """Find a single Instagram export zip in the project root and extract it."""
-    zips = sorted(Path(".").glob("instagram-*.zip"))
-    if not zips:
-        return None
-    zip_path = zips[0]
-    RAW_EXPORT_DIR.mkdir(parents=True, exist_ok=True)
-    with ZipFile(zip_path, "r") as zf:
-        zf.extractall(RAW_EXPORT_DIR)
-    console.print(f"[green]Extracted {zip_path.name} to {RAW_EXPORT_DIR}[/green]")
-    return RAW_EXPORT_DIR
-
-
-def _resolve_client(export_dir: Optional[Path]):
-    """Pick the right client based on available data."""
-    if export_dir:
-        return OfficialExportClient(export_dir), "official_export"
-
-    if RAW_EXPORT_DIR.exists() and any(RAW_EXPORT_DIR.rglob("followers_*.json")):
-        return OfficialExportClient(RAW_EXPORT_DIR), "official_export"
-
-    extracted = _extract_zip_to_raw()
-    if extracted:
-        return OfficialExportClient(extracted), "official_export"
-
-    raise FileNotFoundError(
-        "No Instagram export found. "
-        "Place an official export zip in the project root or extract it to data/export/raw."
-    )
-
-
 @app.command()
 def sync(
     mock: bool = typer.Option(False, "--mock", help="Use mock files for testing"),
-    export_dir: Optional[Path] = typer.Option(
-        None, "--export-dir", help="Path to official Instagram export folder"
+    import_dir: Optional[Path] = typer.Option(
+        None, "--import-dir", help="Path to folder with Instagram export JSON files"
     ),
     snapshot_date: Optional[str] = typer.Option(
         None, "--date", help="Snapshot date (YYYY-MM-DD)"
     ),
 ) -> None:
-    """Import followers/following from an Instagram export and save a snapshot."""
+    """Import followers/following from Instagram export files in data/import."""
     settings = _load_settings()
     _setup_logger(settings)
 
@@ -84,10 +51,14 @@ def sync(
     report_service = ReportService(Path(settings.data_dir))
 
     if mock:
-        client = MockClient(Path("data/mock/followers.json"), Path("data/mock/following.json"))
+        client = MockClient(
+            Path("data/mock/followers.json"), Path("data/mock/following.json")
+        )
         source = "mock"
     else:
-        client, source = _resolve_client(export_dir)
+        import_path = import_dir or IMPORT_DIR
+        client = OfficialExportClient(import_path)
+        source = "official_export"
 
     service = SyncService(client, repo, report_service, settings.target_username)
     snapshot = service.run(snapshot_date=_parse_date(snapshot_date), source=source)
