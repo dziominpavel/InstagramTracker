@@ -27,6 +27,9 @@ data/avatars/*
 # Generated dashboard
 index.html
 
+# Fetch log
+data/fetch.log
+
 # Instagram export archives
 *.zip
 
