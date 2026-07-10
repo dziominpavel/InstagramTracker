@@ -15,11 +15,7 @@ build/
 venv/
 env/
 
-# Environment & secrets
-.env
-
 # Application data
-config/session.json
 data/export/*
 !data/export/.gitkeep
 data/snapshots/*
@@ -30,6 +26,9 @@ data/reports/*
 # Exported snapshots
 snapshot_*.json
 snapshot_*.csv
+
+# Instagram export archives
+*.zip
 
 # Logs
 logs/*.log

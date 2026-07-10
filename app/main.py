@@ -1,20 +1,16 @@
 from datetime import date
 from pathlib import Path
 from typing import Optional
+from zipfile import ZipFile
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
-
-def _parse_date(value: Optional[str]) -> Optional[date]:
-    return date.fromisoformat(value) if value else None
-
 from app.clients.archive_client import ArchiveClient
-from app.clients.instagrapi_client import InstagrapiClient
 from app.clients.mock_client import MockClient
+from app.clients.official_export_client import OfficialExportClient
 from app.config import Settings, setup_logger
-from app.session.session_manager import SessionManager
 from app.repositories.json_repository import JsonRepository
 from app.services.analytics_service import AnalyticsService
 from app.services.report_service import ReportService
@@ -24,6 +20,7 @@ app = typer.Typer(help="Instagram Tracker CLI")
 console = Console()
 
 CONFIG_PATH = Path("config/config.json")
+RAW_EXPORT_DIR = Path("data/export/raw")
 
 
 def _load_settings() -> Settings:
@@ -34,87 +31,63 @@ def _setup_logger(settings: Settings) -> None:
     setup_logger(settings.log_level)
 
 
-@app.command()
-def login() -> None:
-    """Login to Instagram and save session."""
-    settings = _load_settings()
-    _setup_logger(settings)
+def _parse_date(value: Optional[str]) -> Optional[date]:
+    return date.fromisoformat(value) if value else None
 
-    if not settings.instagram_username or not settings.instagram_password:
-        console.print(
-            "[red]Set INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD in .env[/red]"
-        )
-        raise typer.Exit(1)
 
-    def ask_code(msg: str) -> str:
-        return typer.prompt(msg)
+def _extract_zip_to_raw() -> Optional[Path]:
+    """Find a single Instagram export zip in the project root and extract it."""
+    zips = sorted(Path(".").glob("instagram-*.zip"))
+    if not zips:
+        return None
+    zip_path = zips[0]
+    RAW_EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+    with ZipFile(zip_path, "r") as zf:
+        zf.extractall(RAW_EXPORT_DIR)
+    console.print(f"[green]Extracted {zip_path.name} to {RAW_EXPORT_DIR}[/green]")
+    return RAW_EXPORT_DIR
 
-    session_manager = SessionManager(Path(settings.session_path))
-    client = InstagrapiClient(
-        settings.instagram_username,
-        settings.instagram_password,
-        settings.target_username,
-        session_manager,
-        code_callback=ask_code,
+
+def _resolve_client(export_dir: Optional[Path]):
+    """Pick the right client based on available data."""
+    if export_dir:
+        return OfficialExportClient(export_dir), "official_export"
+
+    if RAW_EXPORT_DIR.exists() and any(RAW_EXPORT_DIR.rglob("followers_*.json")):
+        return OfficialExportClient(RAW_EXPORT_DIR), "official_export"
+
+    extracted = _extract_zip_to_raw()
+    if extracted:
+        return OfficialExportClient(extracted), "official_export"
+
+    raise FileNotFoundError(
+        "No Instagram export found. "
+        "Place an official export zip in the project root or extract it to data/export/raw."
     )
-    try:
-        client.login()
-    except RuntimeError as exc:
-        console.print(f"[yellow]{exc}[/yellow]")
-        raise typer.Exit(1)
-    except Exception as exc:
-        console.print(f"[red]Login failed: {exc}[/red]")
-        raise typer.Exit(1)
-    console.print("[green]Logged in successfully[/green]")
 
 
 @app.command()
 def sync(
-    mock: bool = typer.Option(False, "--mock", help="Use mock files"),
-    instagram: bool = typer.Option(
-        False, "--instagram", help="Use real Instagram via instagrapi"
-    ),
-    followers_file: Optional[Path] = typer.Option(
-        None, "--followers-file", help="Path to followers JSON"
-    ),
-    following_file: Optional[Path] = typer.Option(
-        None, "--following-file", help="Path to following JSON"
+    mock: bool = typer.Option(False, "--mock", help="Use mock files for testing"),
+    export_dir: Optional[Path] = typer.Option(
+        None, "--export-dir", help="Path to official Instagram export folder"
     ),
     snapshot_date: Optional[str] = typer.Option(
         None, "--date", help="Snapshot date (YYYY-MM-DD)"
     ),
 ) -> None:
-    """Download and save a snapshot."""
+    """Import followers/following from an Instagram export and save a snapshot."""
     settings = _load_settings()
     _setup_logger(settings)
 
     repo = JsonRepository(Path(settings.data_dir))
     report_service = ReportService(Path(settings.data_dir))
 
-    if instagram:
-        if not settings.instagram_username or not settings.instagram_password:
-            console.print(
-                "[red]Set INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD in .env[/red]"
-            )
-            raise typer.Exit(1)
-        session_manager = SessionManager(Path(settings.session_path))
-        client = InstagrapiClient(
-            settings.instagram_username,
-            settings.instagram_password,
-            settings.target_username,
-            session_manager,
-        )
-        source = "instagram"
-    elif mock:
-        followers_path = followers_file or Path("data/mock/followers.json")
-        following_path = following_file or Path("data/mock/following.json")
-        client = MockClient(followers_path, following_path)
+    if mock:
+        client = MockClient(Path("data/mock/followers.json"), Path("data/mock/following.json"))
         source = "mock"
     else:
-        followers_path = followers_file or Path("data/export/followers.json")
-        following_path = following_file or Path("data/export/following.json")
-        client = ArchiveClient(followers_path, following_path)
-        source = "archive"
+        client, source = _resolve_client(export_dir)
 
     service = SyncService(client, repo, report_service, settings.target_username)
     snapshot = service.run(snapshot_date=_parse_date(snapshot_date), source=source)
@@ -284,39 +257,5 @@ def show_config() -> None:
     settings = _load_settings()
     console.print("[bold]Configuration[/bold]")
     console.print(f"  target_username: {settings.target_username}")
-    console.print(f"  session_path: {settings.session_path}")
     console.print(f"  data_dir: {settings.data_dir}")
     console.print(f"  log_level: {settings.log_level}")
-
-
-@app.command()
-def menu() -> None:
-    """Interactive menu."""
-    while True:
-        console.print("\n[bold]Instagram Tracker[/bold]")
-        console.print("1. login")
-        console.print("2. sync --instagram")
-        console.print("3. sync --mock")
-        console.print("4. status")
-        console.print("5. history")
-        console.print("6. stats")
-        console.print("0. exit")
-
-        choice = typer.prompt("Select action", default="0")
-
-        if choice == "1":
-            login()
-        elif choice == "2":
-            sync(instagram=True)
-        elif choice == "3":
-            sync(mock=True)
-        elif choice == "4":
-            status()
-        elif choice == "5":
-            history()
-        elif choice == "6":
-            stats()
-        elif choice == "0":
-            break
-        else:
-            console.print("[red]Invalid choice[/red]")
