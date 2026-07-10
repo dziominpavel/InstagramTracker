@@ -23,4 +23,9 @@ def setup_logger(log_level: str = "INFO", log_dir: str = "logs") -> logging.Logg
         stream_handler.setFormatter(formatter)
         logger.addHandler(stream_handler)
 
+    # Suppress noisy instagrapi logs in the console; keep them in the log file.
+    instagrapi_logger = logging.getLogger("instagrapi")
+    instagrapi_logger.setLevel(logging.WARNING)
+    instagrapi_logger.handlers.clear()
+
     return logger

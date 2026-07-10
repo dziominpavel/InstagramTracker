@@ -46,14 +46,25 @@ def login() -> None:
         )
         raise typer.Exit(1)
 
+    def ask_code(msg: str) -> str:
+        return typer.prompt(msg)
+
     session_manager = SessionManager(Path(settings.session_path))
     client = InstagrapiClient(
         settings.instagram_username,
         settings.instagram_password,
         settings.target_username,
         session_manager,
+        code_callback=ask_code,
     )
-    client.login()
+    try:
+        client.login()
+    except RuntimeError as exc:
+        console.print(f"[yellow]{exc}[/yellow]")
+        raise typer.Exit(1)
+    except Exception as exc:
+        console.print(f"[red]Login failed: {exc}[/red]")
+        raise typer.Exit(1)
     console.print("[green]Logged in successfully[/green]")
 
 
