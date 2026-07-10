@@ -11,13 +11,14 @@ Pet-проект для отслеживания изменений подпис
 - Архитектурный интерфейс `InstagramClient` позволяет подключить `InstagrapiClient` или импорт архива данных позже.
 - CLI на `Typer` + красивый вывод на `Rich`.
 
-## Быстрый старт
+## Быстрый старт (Windows)
 
 ```bash
 python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
+.venv\Scripts\pip.exe install -r requirements.txt
 ```
+
+Дальше не нужно активировать `.venv` вручную — используй готовые `.bat` файлы или `run.bat`.
 
 Открой `config/config.json` и укажи `target_username`.
 
@@ -59,18 +60,48 @@ python main.py history
 python main.py sync --followers-file data/export/followers.json --following-file data/export/following.json
 ```
 
+## Запуск через `.bat`
+
+В папке проекта есть готовые батники:
+
+| Файл | Что делает |
+|------|------------|
+| `login.bat` | Авторизация в Instagram и сохранение сессии. |
+| `sync-mock.bat` | Синхронизация с тестовыми файлами. |
+| `sync-instagram.bat` | Синхронизация с реальным Instagram. |
+| `history.bat` | Показать изменения между снимками. |
+| `status.bat` | Показать последний снимок. |
+| `run.bat` | Универсальный запуск любой команды. |
+
+Примеры:
+
+```bash
+login.bat
+sync-mock.bat
+run.bat menu
+run.bat stats
+run.bat sync --instagram --date 2026-07-10
+```
+
+## Интерактивное меню
+
+```bash
+run.bat menu
+```
+
 ## Команды
 
 | Команда | Описание |
 |---------|----------|
-| `login` | Заглушка для будущей авторизации через Instagram. |
-| `sync` | Загрузить и сохранить снимок. Поддерживает `--mock`, `--followers-file`, `--following-file`, `--date`. |
+| `login` | Авторизация в Instagram и сохранение сессии. |
+| `sync` | Загрузить и сохранить снимок. Поддерживает `--mock`, `--instagram`, `--followers-file`, `--following-file`, `--date`. |
 | `status` | Показать последний сохраненный снимок. |
 | `stats` | Статистика по всем снимкам. |
 | `history` | Изменения между двумя последними снимками. |
 | `report` | Показать отчет за дату. |
 | `export` | Экспорт снимка в JSON или CSV. |
 | `config` | Показать текущую конфигурацию. |
+| `menu` | Интерактивное меню. |
 
 ## Структура
 

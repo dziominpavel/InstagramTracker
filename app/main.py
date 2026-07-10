@@ -276,3 +276,36 @@ def show_config() -> None:
     console.print(f"  session_path: {settings.session_path}")
     console.print(f"  data_dir: {settings.data_dir}")
     console.print(f"  log_level: {settings.log_level}")
+
+
+@app.command()
+def menu() -> None:
+    """Interactive menu."""
+    while True:
+        console.print("\n[bold]Instagram Tracker[/bold]")
+        console.print("1. login")
+        console.print("2. sync --instagram")
+        console.print("3. sync --mock")
+        console.print("4. status")
+        console.print("5. history")
+        console.print("6. stats")
+        console.print("0. exit")
+
+        choice = typer.prompt("Select action", default="0")
+
+        if choice == "1":
+            login()
+        elif choice == "2":
+            sync(instagram=True)
+        elif choice == "3":
+            sync(mock=True)
+        elif choice == "4":
+            status()
+        elif choice == "5":
+            history()
+        elif choice == "6":
+            stats()
+        elif choice == "0":
+            break
+        else:
+            console.print("[red]Invalid choice[/red]")
