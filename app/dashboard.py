@@ -59,6 +59,12 @@ def _build_payload(snapshot: Snapshot, previous: Optional[Snapshot], username: s
             "recent_follow_requests": _users_payload(snapshot.recent_follow_requests),
         },
         "changes": changes,
+        "change_lists": {
+            "new_followers": _users_payload(new_followers) if previous else [],
+            "lost_followers": _users_payload(lost_followers) if previous else [],
+            "new_following": _users_payload(new_following) if previous else [],
+            "lost_following": _users_payload(lost_following) if previous else [],
+        } if previous else {},
     }
 
 
@@ -257,6 +263,10 @@ const TABS = [
   { key: "not_following_back", label: "Не подписаны на меня", ico: "💔", group: "Анализ", desc: "Вы подписаны на них, но они не подписаны на вас." },
   { key: "fans", label: "Фанаты", ico: "⭐", group: "Анализ", desc: "Подписаны на вас, но вы не подписаны на них." },
   { key: "mutual", label: "Взаимные", ico: "🤝", group: "Анализ", desc: "Вы подписаны друг на друга." },
+  { key: "new_followers", label: "Новые подписчики", ico: "🆕", group: "Изменения", desc: "Подписались на вас с прошлого снимка.", requiresChanges: true },
+  { key: "lost_followers", label: "Отписались от меня", ico: "📉", group: "Изменения", desc: "Отписались от вас с прошлого снимка.", requiresChanges: true },
+  { key: "new_following", label: "Новые подписки", ico: "➕", group: "Изменения", desc: "Вы подписались на них с прошлого снимка.", requiresChanges: true },
+  { key: "lost_following", label: "Вы отписались", ico: "➖", group: "Изменения", desc: "Вы отписались от них с прошлого снимка.", requiresChanges: true },
   { key: "followers", label: "Подписчики", ico: "👥", group: "Списки" },
   { key: "following", label: "Подписки", ico: "➕", group: "Списки" },
   { key: "recently_unfollowed", label: "Недавно отписаны", ico: "🚪", group: "Списки", desc: "Профили, от которых вы недавно отписались." },
@@ -305,7 +315,8 @@ function renderRows(key, users, filter){
 }
 
 function listView(tab){
-  const users = DATA.lists[tab.key] || [];
+  const source = tab.requiresChanges ? (DATA.change_lists||{}) : DATA.lists;
+  const users = source[tab.key] || [];
   const desc = tab.desc ? `<div class="desc">${tab.desc}</div>` : "";
   return `
     <div class="panel">
@@ -323,8 +334,10 @@ function listView(tab){
 
 function onSearch(key, value){
   searchState[key] = value;
+  const tab = TABS.find(t => t.key === key);
+  const source = tab && tab.requiresChanges ? (DATA.change_lists||{}) : DATA.lists;
   const el = document.getElementById("list-"+key);
-  if (el) el.innerHTML = renderRows(key, DATA.lists[key]||[], value);
+  if (el) el.innerHTML = renderRows(key, source[key]||[], value);
 }
 
 function statCard(key, label, ico, value, opts={}){
@@ -355,10 +368,10 @@ function overviewView(){
         Изменения с ${ch.previous_date}
       </h3>
       <div class="changes">
-        <div class="change-card up"><div class="value">+${ch.new_followers.length}</div><div class="label">Новые подписчики</div></div>
-        <div class="change-card down"><div class="value">−${ch.lost_followers.length}</div><div class="label">Отписались от вас</div></div>
-        <div class="change-card up"><div class="value">+${ch.new_following.length}</div><div class="label">Новые подписки</div></div>
-        <div class="change-card down"><div class="value">−${ch.lost_following.length}</div><div class="label">Вы отписались</div></div>
+        <div class="change-card up" style="cursor:pointer" onclick="go('new_followers')"><div class="value">+${ch.new_followers.length}</div><div class="label">Новые подписчики →</div></div>
+        <div class="change-card down" style="cursor:pointer" onclick="go('lost_followers')"><div class="value">−${ch.lost_followers.length}</div><div class="label">Отписались от вас →</div></div>
+        <div class="change-card up" style="cursor:pointer" onclick="go('new_following')"><div class="value">+${ch.new_following.length}</div><div class="label">Новые подписки →</div></div>
+        <div class="change-card down" style="cursor:pointer" onclick="go('lost_following')"><div class="value">−${ch.lost_following.length}</div><div class="label">Вы отписались →</div></div>
       </div>`;
   } else {
     changesHtml = `<div class="panel" style="padding:1.1rem 1.25rem;margin-bottom:1.75rem;color:var(--muted);">
@@ -386,24 +399,28 @@ function render(){
   document.getElementById("meta").textContent = `${DATA.counts.followers} подписчиков · ${DATA.counts.following} подписок`;
   document.getElementById("date-pill").textContent = DATA.date;
 
+  const hasChanges = !!DATA.changes;
+  const visibleTabs = TABS.filter(t => !t.requiresChanges || hasChanges);
+
   // nav
   const nav = document.getElementById("nav");
   const mnav = document.getElementById("mobile-nav");
   let lastGroup = null;
   let navHtml = "";
-  TABS.forEach(tab => {
+  visibleTabs.forEach(tab => {
     if (tab.group !== lastGroup){ navHtml += `<div class="nav-group-label">${tab.group}</div>`; lastGroup = tab.group; }
-    const badge = tab.key === "overview" ? "" : `<span class="badge">${(DATA.lists[tab.key]||[]).length}</span>`;
+    const source = tab.requiresChanges ? (DATA.change_lists||{}) : DATA.lists;
+    const badge = tab.key === "overview" ? "" : `<span class="badge">${(source[tab.key]||[]).length}</span>`;
     navHtml += `<button class="nav-item" data-tab="${tab.key}" onclick="go('${tab.key}')"><span class="ico">${tab.ico}</span>${tab.label}${badge}</button>`;
   });
   nav.innerHTML = navHtml;
-  mnav.innerHTML = TABS.map(tab =>
+  mnav.innerHTML = visibleTabs.map(tab =>
     `<button class="nav-item" data-tab="${tab.key}" onclick="go('${tab.key}')"><span class="ico">${tab.ico}</span>${tab.label}</button>`
   ).join("");
 
   // views
   const views = document.getElementById("views");
-  views.innerHTML = TABS.map(tab =>
+  views.innerHTML = visibleTabs.map(tab =>
     `<div class="view" id="view-${tab.key}">${tab.key === "overview" ? overviewView() : listView(tab)}</div>`
   ).join("");
 
@@ -411,7 +428,9 @@ function render(){
 }
 
 function go(key){
-  if (!TABS.find(t => t.key === key)) key = "overview";
+  const hasChanges = !!DATA.changes;
+  const valid = TABS.find(t => t.key === key && (!t.requiresChanges || hasChanges));
+  if (!valid) key = "overview";
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
   const view = document.getElementById("view-"+key);
   if (view) view.classList.add("active");
