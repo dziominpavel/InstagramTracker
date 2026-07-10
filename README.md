@@ -34,7 +34,7 @@ INSTAGRAM_PASSWORD=your_password
 Проверь вход:
 
 ```bash
-python main.py login
+login.bat
 ```
 
 Если сессия сохранится, повторный ввод пароля не понадобится.
@@ -42,8 +42,13 @@ python main.py login
 Синхронизируй данные:
 
 ```bash
-python main.py sync --instagram
+sync-instagram.bat
 ```
+
+### 2FA и challenge
+
+- Если включена двухфакторная аутентификация, программа сама попросит код из приложения или SMS.
+- Если Instagram требует подтвердить вход (challenge), открой приложение Instagram или сайт, одобри вход и запусти `login.bat` повторно.
 
 ### Mock-режим
 
