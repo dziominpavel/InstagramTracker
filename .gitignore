@@ -21,15 +21,8 @@ data/import/*
 data/snapshots/*
 !data/snapshots/.gitkeep
 
-# Exported snapshots
-snapshot_*.json
-snapshot_*.csv
-
-# Instagram export archives
-*.zip
-
-# Logs
-logs/*.log
+# Generated dashboard
+index.html
 
 # IDE
 .idea/
