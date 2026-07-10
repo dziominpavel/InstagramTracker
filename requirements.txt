@@ -1,17 +1,10 @@
-# Instagram unofficial API client
-instagrapi>=2.0.0,<3.0.0
-
 # CLI framework and rich console output
 typer>=0.12.0,<0.13.0
 click>=8.0.0,<8.2.0
 rich>=13.7.0,<14.0.0
 
-# Configuration and environment variables
-python-dotenv>=1.0.0,<2.0.0
+# Configuration
 pydantic>=2.0.0,<3.0.0
-
-# Scheduling (for future auto-sync)
-APScheduler>=3.10.0,<4.0.0
 
 # Testing
 pytest>=8.0.0,<9.0.0
