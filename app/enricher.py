@@ -199,6 +199,7 @@ def enrich_profiles(
     delay: float = 2.0,
     limit: Optional[int] = None,
     force: bool = False,
+    on_progress: Optional[callable] = None,
 ) -> dict:
     """Fetch avatars and full names for users in snapshot via Playwright."""
     from playwright.sync_api import sync_playwright
@@ -256,9 +257,14 @@ def enrich_profiles(
                 }
                 print(f"  [{i+1}/{len(to_fetch)}] @{username}: ERROR {e}", flush=True)
 
-            # Save cache every 10 profiles
+            # Save cache every 10 profiles and regenerate dashboard
             if (i + 1) % 10 == 0:
                 _save_cache(cache)
+                if on_progress:
+                    try:
+                        on_progress(i + 1, len(to_fetch))
+                    except Exception:
+                        pass
 
             time.sleep(delay)
 
