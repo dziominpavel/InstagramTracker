@@ -157,6 +157,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div class="stats">
       <div class="stat"><div class="value">{followers}</div><div class="label">Подписчики</div></div>
       <div class="stat"><div class="value">{following}</div><div class="label">Подписки</div></div>
+      <div class="stat"><div class="value">{not_following_back}</div><div class="label">Не взаимные подписки</div></div>
+      <div class="stat"><div class="value">{fans}</div><div class="label">Фанаты</div></div>
       <div class="stat"><div class="value">{blocked}</div><div class="label">Заблокированы</div></div>
       <div class="stat"><div class="value">{hidden}</div><div class="label">Скрыты из историй</div></div>
       <div class="stat"><div class="value">{recent_unfollows}</div><div class="label">Недавно отписаны</div></div>
@@ -217,7 +219,15 @@ def _changes_html(snapshot: Snapshot, previous: Optional[Snapshot]) -> str:
 
 
 def generate_html(snapshot: Snapshot, previous: Optional[Snapshot], username: str) -> str:
+    follower_ids = {u.id for u in snapshot.followers}
+    following_ids = {u.id for u in snapshot.following}
+
+    not_following_back = [u for u in snapshot.following if u.id not in follower_ids]
+    fans = [u for u in snapshot.followers if u.id not in following_ids]
+
     sections = [
+        _section("Я подписан, но они не подписаны на меня", len(not_following_back), not_following_back),
+        _section("Подписаны на меня, но я не подписан", len(fans), fans),
         _section("Подписчики", len(snapshot.followers), snapshot.followers),
         _section("Подписки", len(snapshot.following), snapshot.following),
         _section("Заблокированные профили", len(snapshot.blocked), snapshot.blocked),
@@ -230,6 +240,8 @@ def generate_html(snapshot: Snapshot, previous: Optional[Snapshot], username: st
         date=snapshot.date.isoformat(),
         followers=len(snapshot.followers),
         following=len(snapshot.following),
+        not_following_back=len(not_following_back),
+        fans=len(fans),
         blocked=len(snapshot.blocked),
         hidden=len(snapshot.hide_story_from),
         recent_unfollows=len(snapshot.recently_unfollowed),
