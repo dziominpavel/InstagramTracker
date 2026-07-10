@@ -7,7 +7,7 @@ import typer
 from app.config import Settings
 from app.dashboard import save_dashboard
 from app.parser import ExportParser
-from app.storage import get_previous_snapshot, list_snapshots, save_snapshot
+from app.storage import list_snapshots, save_snapshot
 
 app = typer.Typer(help="Instagram Tracker")
 
@@ -37,10 +37,10 @@ def generate(
     snapshot = parser.parse()
     snapshot.date = target_date
 
-    previous = get_previous_snapshot(target_date)
     save_snapshot(snapshot)
+    all_snapshots = list_snapshots()
 
-    save_dashboard(snapshot, previous, settings.target_username, output)
+    save_dashboard(snapshot, all_snapshots, settings.target_username, output)
     typer.echo(f"Dashboard saved to {output}")
     typer.echo(f"Followers: {len(snapshot.followers)}")
     typer.echo(f"Following: {len(snapshot.following)}")
