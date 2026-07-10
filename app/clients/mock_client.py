@@ -6,21 +6,31 @@ from app.models.user import User
 
 
 class MockClient:
-    def __init__(self, followers_file: Path, following_file: Path):
-        self.followers_file = Path(followers_file)
-        self.following_file = Path(following_file)
+    def __init__(self, followers_path: Path, following_path: Path):
+        self.followers_path = Path(followers_path)
+        self.following_path = Path(following_path)
 
     def login(self) -> None:
         pass
 
-    def _load_users(self, path: Path) -> List[User]:
-        if not path.exists():
-            raise FileNotFoundError(f"File not found: {path}")
+    def _load(self, path: Path) -> List[User]:
         data = json.loads(path.read_text(encoding="utf-8"))
-        return [User.from_dict(u) for u in data]
+        return [User.from_dict(item) for item in data]
 
     def get_followers(self) -> List[User]:
-        return self._load_users(self.followers_file)
+        return self._load(self.followers_path)
 
     def get_following(self) -> List[User]:
-        return self._load_users(self.following_file)
+        return self._load(self.following_path)
+
+    def get_blocked(self) -> List[User]:
+        return []
+
+    def get_hide_story_from(self) -> List[User]:
+        return []
+
+    def get_recently_unfollowed(self) -> List[User]:
+        return []
+
+    def get_recent_follow_requests(self) -> List[User]:
+        return []
