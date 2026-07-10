@@ -21,6 +21,29 @@ pip install -r requirements.txt
 
 Открой `config/config.json` и укажи `target_username`.
 
+### Для работы с реальным Instagram
+
+Создай файл `.env` рядом с `.env.example`:
+
+```env
+INSTAGRAM_USERNAME=your_login
+INSTAGRAM_PASSWORD=your_password
+```
+
+Проверь вход:
+
+```bash
+python main.py login
+```
+
+Если сессия сохранится, повторный ввод пароля не понадобится.
+
+Синхронизируй данные:
+
+```bash
+python main.py sync --instagram
+```
+
 ### Mock-режим
 
 ```bash

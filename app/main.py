@@ -11,8 +11,10 @@ def _parse_date(value: Optional[str]) -> Optional[date]:
     return date.fromisoformat(value) if value else None
 
 from app.clients.archive_client import ArchiveClient
+from app.clients.instagrapi_client import InstagrapiClient
 from app.clients.mock_client import MockClient
 from app.config import Settings, setup_logger
+from app.session.session_manager import SessionManager
 from app.repositories.json_repository import JsonRepository
 from app.services.analytics_service import AnalyticsService
 from app.services.report_service import ReportService
@@ -34,15 +36,33 @@ def _setup_logger(settings: Settings) -> None:
 
 @app.command()
 def login() -> None:
-    """Login to Instagram (not implemented yet)."""
-    console.print(
-        "[yellow]Login is not implemented yet. Use mock or archive mode.[/yellow]"
+    """Login to Instagram and save session."""
+    settings = _load_settings()
+    _setup_logger(settings)
+
+    if not settings.instagram_username or not settings.instagram_password:
+        console.print(
+            "[red]Set INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD in .env[/red]"
+        )
+        raise typer.Exit(1)
+
+    session_manager = SessionManager(Path(settings.session_path))
+    client = InstagrapiClient(
+        settings.instagram_username,
+        settings.instagram_password,
+        settings.target_username,
+        session_manager,
     )
+    client.login()
+    console.print("[green]Logged in successfully[/green]")
 
 
 @app.command()
 def sync(
     mock: bool = typer.Option(False, "--mock", help="Use mock files"),
+    instagram: bool = typer.Option(
+        False, "--instagram", help="Use real Instagram via instagrapi"
+    ),
     followers_file: Optional[Path] = typer.Option(
         None, "--followers-file", help="Path to followers JSON"
     ),
@@ -60,10 +80,24 @@ def sync(
     repo = JsonRepository(Path(settings.data_dir))
     report_service = ReportService(Path(settings.data_dir))
 
-    if mock:
+    if instagram:
+        if not settings.instagram_username or not settings.instagram_password:
+            console.print(
+                "[red]Set INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD in .env[/red]"
+            )
+            raise typer.Exit(1)
+        session_manager = SessionManager(Path(settings.session_path))
+        client = InstagrapiClient(
+            settings.instagram_username,
+            settings.instagram_password,
+            settings.target_username,
+            session_manager,
+        )
+        source = "instagram"
+    elif mock:
         followers_path = followers_file or Path("data/mock/followers.json")
         following_path = following_file or Path("data/mock/following.json")
-        client: MockClient = MockClient(followers_path, following_path)
+        client = MockClient(followers_path, following_path)
         source = "mock"
     else:
         followers_path = followers_file or Path("data/export/followers.json")
