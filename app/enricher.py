@@ -224,7 +224,7 @@ def enrich_profiles(
     if not to_fetch:
         return {"total": len(all_users), "fetched": 0, "skipped": len(all_users), "failed": 0}
 
-    print(f"Avatars to fetch: {len(to_fetch)} out of {len(all_users)}")
+    print(f"Avatars to fetch: {len(to_fetch)} out of {len(all_users)}", flush=True)
 
     fetched = 0
     failed = 0
@@ -243,7 +243,7 @@ def enrich_profiles(
                 cache[username] = result
                 fetched += 1
                 status = "OK" if result.get("avatar_local") else "no-pic"
-                print(f"  [{i+1}/{len(to_fetch)}] @{username}: {status}")
+                print(f"  [{i+1}/{len(to_fetch)}] @{username}: {status}", flush=True)
             except Exception as e:
                 failed += 1
                 cache[username] = {
@@ -254,7 +254,7 @@ def enrich_profiles(
                     "cached_at": date.today().isoformat(),
                     "error": str(e)[:100],
                 }
-                print(f"  [{i+1}/{len(to_fetch)}] @{username}: ERROR {e}")
+                print(f"  [{i+1}/{len(to_fetch)}] @{username}: ERROR {e}", flush=True)
 
             # Save cache every 10 profiles
             if (i + 1) % 10 == 0:

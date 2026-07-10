@@ -25,12 +25,19 @@ def _load_settings() -> Settings:
 
 def _start_background_fetch(import_dir: Path) -> None:
     """Start avatar fetching in a detached background process."""
+    # Use absolute path so the background process finds files regardless of cwd
+    abs_import = import_dir.resolve()
+    bg_script = str(Path(__file__).parent / "background_fetch.py")
+
+    # Log file for the background process
+    log_file = (Path(__file__).parent.parent / "data" / "fetch.log").open("a", encoding="utf-8")
+
     subprocess.Popen(
-        [sys.executable, str(Path(__file__).parent / "background_fetch.py"), str(import_dir)],
-        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        [sys.executable, bg_script, str(abs_import)],
+        stdout=log_file,
+        stderr=subprocess.STDOUT,
         close_fds=True,
+        cwd=str(Path(__file__).parent.parent),
     )
 
 
