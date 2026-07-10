@@ -24,6 +24,9 @@ data/snapshots/*
 # Generated dashboard
 index.html
 
+# Instagram export archives
+*.zip
+
 # IDE
 .idea/
 .vscode/
