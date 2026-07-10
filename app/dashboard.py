@@ -5,11 +5,27 @@ from typing import Dict, List, Optional
 from app.models import Snapshot, User
 
 
-def _users_payload(users: List[User]) -> List[Dict[str, str]]:
-    return [{"username": u.username, "full_name": u.full_name or ""} for u in users]
+def _users_payload(users: List[User], profiles: Optional[Dict[str, dict]] = None) -> List[Dict[str, str]]:
+    result = []
+    for u in users:
+        entry = {"username": u.username, "full_name": u.full_name or ""}
+        if profiles and u.username in profiles:
+            p = profiles[u.username]
+            if p.get("avatar_url"):
+                entry["avatar_url"] = p["avatar_url"]
+            if p.get("full_name"):
+                entry["full_name"] = p["full_name"]
+            if p.get("followers_count"):
+                entry["followers_count"] = p["followers_count"]
+            if p.get("following_count"):
+                entry["following_count"] = p["following_count"]
+            if p.get("posts_count"):
+                entry["posts_count"] = p["posts_count"]
+        result.append(entry)
+    return result
 
 
-def _build_payload(snapshot: Snapshot, all_snapshots: List[Snapshot], username: str) -> dict:
+def _build_payload(snapshot: Snapshot, all_snapshots: List[Snapshot], username: str, profiles: Optional[Dict[str, dict]] = None) -> dict:
     follower_ids = {u.id for u in snapshot.followers}
     following_ids = {u.id for u in snapshot.following}
 
@@ -24,8 +40,8 @@ def _build_payload(snapshot: Snapshot, all_snapshots: List[Snapshot], username: 
             continue
         snapshots_data.append({
             "date": s.date.isoformat(),
-            "followers": _users_payload(s.followers),
-            "following": _users_payload(s.following),
+            "followers": _users_payload(s.followers, profiles),
+            "following": _users_payload(s.following, profiles),
         })
 
     return {
@@ -43,15 +59,15 @@ def _build_payload(snapshot: Snapshot, all_snapshots: List[Snapshot], username: 
             "recent_follow_requests": len(snapshot.recent_follow_requests),
         },
         "lists": {
-            "not_following_back": _users_payload(not_following_back),
-            "fans": _users_payload(fans),
-            "mutual": _users_payload(mutual),
-            "followers": _users_payload(snapshot.followers),
-            "following": _users_payload(snapshot.following),
-            "blocked": _users_payload(snapshot.blocked),
-            "hide_story_from": _users_payload(snapshot.hide_story_from),
-            "recently_unfollowed": _users_payload(snapshot.recently_unfollowed),
-            "recent_follow_requests": _users_payload(snapshot.recent_follow_requests),
+            "not_following_back": _users_payload(not_following_back, profiles),
+            "fans": _users_payload(fans, profiles),
+            "mutual": _users_payload(mutual, profiles),
+            "followers": _users_payload(snapshot.followers, profiles),
+            "following": _users_payload(snapshot.following, profiles),
+            "blocked": _users_payload(snapshot.blocked, profiles),
+            "hide_story_from": _users_payload(snapshot.hide_story_from, profiles),
+            "recently_unfollowed": _users_payload(snapshot.recently_unfollowed, profiles),
+            "recent_follow_requests": _users_payload(snapshot.recent_follow_requests, profiles),
         },
         "snapshots": snapshots_data,
     }
@@ -204,6 +220,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
     display: grid; place-items: center; font-weight: 700; color: #fff; font-size: 0.95rem;
   }
+  .avatar-img {
+    width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0; object-fit: cover;
+  }
+  .user-stats { color: var(--muted); font-size: 0.75rem; margin-left: 0.4rem; }
   .row .info { min-width: 0; }
   .row .uname { font-weight: 600; font-size: 0.92rem; }
   .row .fname { color: var(--muted); font-size: 0.82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -380,16 +400,24 @@ function renderRows(key, users, filter){
     if (users.length === 0) return '<div class="empty"><div class="big">🎉</div>Список пуст</div>';
     return '<div class="empty"><div class="big">🔍</div>Ничего не найдено</div>';
   }
-  return filtered.map((u, i) => `
+  return filtered.map((u, i) => {
+    const avatar = u.avatar_url
+      ? `<img class="avatar-img" src="${esc(u.avatar_url)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><div class="avatar" style="background:${avatarColor(u.username)};display:none">${esc(initials(u))}</div>`
+      : `<div class="avatar" style="background:${avatarColor(u.username)}">${esc(initials(u))}</div>`;
+    const stats = (u.followers_count || u.following_count || u.posts_count)
+      ? `<span class="user-stats">${u.followers_count||'—'} подп. · ${u.posts_count||'—'} пост.</span>`
+      : '';
+    return `
     <div class="row">
       <div class="idx">${i+1}</div>
-      <div class="avatar" style="background:${avatarColor(u.username)}">${esc(initials(u))}</div>
+      ${avatar}
       <div class="info">
         <div class="uname">@${esc(u.username)}</div>
-        <div class="fname">${esc(u.full_name) || '&nbsp;'}</div>
+        <div class="fname">${esc(u.full_name) || '&nbsp;'} ${stats}</div>
       </div>
       <a class="open" href="https://www.instagram.com/${encodeURIComponent(u.username)}/" target="_blank" rel="noopener">Открыть ↗</a>
-    </div>`).join("");
+    </div>`;
+  }).join("");
 }
 
 function listView(tab){
@@ -576,12 +604,12 @@ init();
 </html>"""
 
 
-def generate_html(snapshot: Snapshot, all_snapshots: List[Snapshot], username: str) -> str:
-    payload = _build_payload(snapshot, all_snapshots, username)
+def generate_html(snapshot: Snapshot, all_snapshots: List[Snapshot], username: str, profiles: Optional[Dict[str, dict]] = None) -> str:
+    payload = _build_payload(snapshot, all_snapshots, username, profiles)
     data_json = json.dumps(payload, ensure_ascii=False)
     return HTML_TEMPLATE.replace("__DATA__", data_json)
 
 
-def save_dashboard(snapshot: Snapshot, all_snapshots: List[Snapshot], username: str, out: Path = Path("index.html")) -> None:
-    html = generate_html(snapshot, all_snapshots, username)
+def save_dashboard(snapshot: Snapshot, all_snapshots: List[Snapshot], username: str, out: Path = Path("index.html"), profiles: Optional[Dict[str, dict]] = None) -> None:
+    html = generate_html(snapshot, all_snapshots, username, profiles)
     out.write_text(html, encoding="utf-8")
