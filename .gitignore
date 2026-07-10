@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment & secrets
+.env
+
+# Application data
+config/session.json
+data/export/*
+!data/export/.gitkeep
+data/snapshots/*
+!data/snapshots/.gitkeep
+data/reports/*
+!data/reports/.gitkeep
+
+# Exported snapshots
+snapshot_*.json
+snapshot_*.csv
+
+# Logs
+logs/*.log
+
+# IDE
+.idea/
+.vscode/
