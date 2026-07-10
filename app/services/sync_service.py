@@ -6,7 +6,6 @@ from app.clients.instagram_client import InstagramClient
 from app.models.snapshot import Snapshot
 from app.repositories.json_repository import JsonRepository
 from app.services.analytics_service import AnalyticsService
-from app.services.report_service import ReportService
 
 logger = logging.getLogger("instagram_tracker")
 
@@ -16,31 +15,36 @@ class SyncService:
         self,
         client: InstagramClient,
         repository: JsonRepository,
-        report_service: ReportService,
         target_username: str,
     ):
         self.client = client
         self.repository = repository
-        self.report_service = report_service
         self.target_username = target_username
 
     def run(
         self, snapshot_date: Optional[date] = None, source: str = "archive"
     ) -> Snapshot:
-        logger.info("Logging in")
-        self.client.login()
-
-        logger.info("Downloading followers")
+        logger.info("Reading followers")
         followers = self.client.get_followers()
 
-        logger.info("Downloading following")
+        logger.info("Reading following")
         following = self.client.get_following()
+
+        logger.info("Reading extra lists")
+        blocked = self.client.get_blocked()
+        hide_story_from = self.client.get_hide_story_from()
+        recently_unfollowed = self.client.get_recently_unfollowed()
+        recent_follow_requests = self.client.get_recent_follow_requests()
 
         snapshot = Snapshot(
             date=snapshot_date or date.today(),
             followers=followers,
             following=following,
             source=source,
+            blocked=blocked,
+            hide_story_from=hide_story_from,
+            recently_unfollowed=recently_unfollowed,
+            recent_follow_requests=recent_follow_requests,
         )
 
         prev = self.repository.get_latest_snapshot()
@@ -50,9 +54,7 @@ class SyncService:
 
         if prev and prev.date != snapshot.date:
             logger.info("Comparing with previous snapshot")
-            events = AnalyticsService.diff(prev, snapshot)
-            logger.info("Saving report")
-            self.report_service.save(snapshot, events)
+            AnalyticsService.diff(prev, snapshot)
         elif not prev:
             logger.info("No previous snapshot found, skipping comparison")
         else:

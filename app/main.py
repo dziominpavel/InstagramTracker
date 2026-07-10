@@ -1,3 +1,4 @@
+import sys
 from datetime import date
 from pathlib import Path
 from typing import Optional
@@ -11,11 +12,15 @@ from app.clients.official_export_client import OfficialExportClient
 from app.config import Settings, setup_logger
 from app.repositories.json_repository import JsonRepository
 from app.services.analytics_service import AnalyticsService
-from app.services.report_service import ReportService
 from app.services.sync_service import SyncService
 
 app = typer.Typer(help="Instagram Tracker CLI")
 console = Console()
+
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except (AttributeError, OSError):
+    pass
 
 CONFIG_PATH = Path("config/config.json")
 IMPORT_DIR = Path("data/import")
@@ -48,7 +53,6 @@ def sync(
     _setup_logger(settings)
 
     repo = JsonRepository(Path(settings.data_dir))
-    report_service = ReportService(Path(settings.data_dir))
 
     if mock:
         client = MockClient(
@@ -60,12 +64,16 @@ def sync(
         client = OfficialExportClient(import_path)
         source = "official_export"
 
-    service = SyncService(client, repo, report_service, settings.target_username)
+    service = SyncService(client, repo, settings.target_username)
     snapshot = service.run(snapshot_date=_parse_date(snapshot_date), source=source)
 
     console.print(f"[green]Snapshot saved: {snapshot.date}[/green]")
     console.print(f"  Followers: {len(snapshot.followers)}")
     console.print(f"  Following: {len(snapshot.following)}")
+    console.print(f"  Blocked: {len(snapshot.blocked)}")
+    console.print(f"  Hidden stories: {len(snapshot.hide_story_from)}")
+    console.print(f"  Recent unfollows: {len(snapshot.recently_unfollowed)}")
+    console.print(f"  Follow requests: {len(snapshot.recent_follow_requests)}")
 
 
 @app.command()
@@ -82,6 +90,10 @@ def status() -> None:
     console.print(f"[bold]Latest snapshot:[/bold] {snapshot.date}")
     console.print(f"  Followers: {len(snapshot.followers)}")
     console.print(f"  Following: {len(snapshot.following)}")
+    console.print(f"  Blocked: {len(snapshot.blocked)}")
+    console.print(f"  Hidden stories: {len(snapshot.hide_story_from)}")
+    console.print(f"  Recent unfollows: {len(snapshot.recently_unfollowed)}")
+    console.print(f"  Follow requests: {len(snapshot.recent_follow_requests)}")
     console.print(f"  Source: {snapshot.source}")
 
 
@@ -161,24 +173,31 @@ def history(
 
 
 @app.command()
-def report(
-    report_date: Optional[str] = typer.Option(None, "--date"),
-) -> None:
-    """Show report for a given date."""
+def lists() -> None:
+    """Show special relationship lists from the latest snapshot."""
     settings = _load_settings()
-    report_service = ReportService(Path(settings.data_dir))
-    date_str = (_parse_date(report_date) or date.today()).isoformat()
+    repo = JsonRepository(Path(settings.data_dir))
+    snapshot = repo.get_latest_snapshot()
 
-    try:
-        data = report_service.load(date_str)
-    except FileNotFoundError:
-        console.print(f"[red]Report not found for {date_str}.[/red]")
+    if not snapshot:
+        console.print("[red]No snapshots found.[/red]")
         raise typer.Exit(1)
 
-    console.print(f"[bold]Report for {data['date']}[/bold]")
-    console.print(f"  Followers: {data['followers_count']}")
-    console.print(f"  Following: {data['following_count']}")
-    console.print(f"  Events: {len(data['events'])}")
+    def _show(title: str, users: list) -> None:
+        if not users:
+            console.print(f"[green]{title}: empty[/green]")
+            return
+        table = Table(title=title)
+        table.add_column("Username")
+        table.add_column("Full name")
+        for user in users:
+            table.add_row(user.username, user.full_name or "")
+        console.print(table)
+
+    _show("Blocked profiles", snapshot.blocked)
+    _show("Hidden stories from", snapshot.hide_story_from)
+    _show("Recently unfollowed", snapshot.recently_unfollowed)
+    _show("Recent follow requests", snapshot.recent_follow_requests)
 
 
 @app.command()

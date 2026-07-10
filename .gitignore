@@ -20,8 +20,6 @@ data/import/*
 !data/import/.gitkeep
 data/snapshots/*
 !data/snapshots/.gitkeep
-data/reports/*
-!data/reports/.gitkeep
 
 # Exported snapshots
 snapshot_*.json
