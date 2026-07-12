@@ -1,0 +1,37 @@
+---
+trigger: glob
+description: Структура openspec/specs — capability = подсистема, не фича
+globs:
+  - "openspec/**/*"
+---
+
+# Структура openspec/specs/
+
+**Capability = подсистема/домен, а не отдельная фича.**
+
+Формат spec.md (Purpose, MUST/SHALL, сценарии) — см. `openspec-language.mdc`.
+
+## Правила группировки
+
+- **Крупные capability** — одна папка на подсистему (`dashboard-ui/`, `snapshot-pipeline/`, `profile-enrichment/`)
+- **Не мелкие capability** — не создавать `period-button-style/`, `avatar-fallback/` и т.п.
+- **Delta specs** при архивации сливаются в существующую папку подсистемы
+
+## Ожидаемые capability (по мере появления)
+
+```
+openspec/specs/
+├── dashboard-ui/          ← HTML-дашборд, навигация, V1/V2, списки, обзор
+├── snapshot-pipeline/     ← import → snapshot → generate
+└── profile-enrichment/    ← аватарки, имена, кэш, background fetch
+```
+
+## Когда создавать новую папку
+
+Только если change вводит **новую подсистему**, которой ещё нет в specs/.
+
+## Синхронизация при архивации
+
+1. Delta из `changes/<name>/specs/` → merge в `openspec/specs/<capability>/spec.md`
+2. Main spec: `## Purpose` + `## Requirements`
+3. `openspec validate --all` — все items должны pass
