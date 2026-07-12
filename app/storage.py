@@ -1,4 +1,5 @@
 import json
+import os
 from datetime import date
 from pathlib import Path
 from typing import List, Optional
@@ -15,7 +16,9 @@ def _snapshot_path(snapshot_date: date) -> Path:
 
 def save_snapshot(snapshot: Snapshot) -> None:
     path = _snapshot_path(snapshot.date)
-    path.write_text(json.dumps(snapshot.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(snapshot.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(str(tmp), str(path))
 
 
 def list_snapshots() -> List[Snapshot]:
