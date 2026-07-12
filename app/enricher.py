@@ -1,6 +1,8 @@
 import json
+import os
 import re
 import time
+import urllib.error
 import urllib.request
 from datetime import date, datetime
 from pathlib import Path
@@ -12,6 +14,26 @@ PROFILES_PATH = Path("data/profiles.json")
 AVATARS_DIR = Path("data/avatars")
 METADATA_CACHE_DAYS = 30   # re-fetch name/stats if older than this
 AVATAR_CACHE_DAYS = 90     # re-download avatar image if older than this
+STATUS_CACHE_DAYS = 7      # re-check active/deactivated status
+
+
+def check_account_status(username: str) -> str:
+    """Check if Instagram account is active or deactivated via HTTP status.
+    Returns 'active', 'deactivated', or 'unknown'.
+    """
+    url = f"https://www.instagram.com/{username}/?__a=1&__d=dis"
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    })
+    try:
+        resp = urllib.request.urlopen(req, timeout=10)
+        resp.read()
+        return "active" if resp.status == 201 else "unknown"
+    except urllib.error.HTTPError as e:
+        e.read()
+        return "deactivated" if e.code == 404 else "unknown"
+    except Exception:
+        return "unknown"
 
 
 def _load_cache() -> Dict[str, dict]:
@@ -22,7 +44,9 @@ def _load_cache() -> Dict[str, dict]:
 
 def _save_cache(cache: Dict[str, dict]) -> None:
     PROFILES_PATH.parent.mkdir(parents=True, exist_ok=True)
-    PROFILES_PATH.write_text(json.dumps(cache, indent=2, ensure_ascii=False), encoding="utf-8")
+    tmp = PROFILES_PATH.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(cache, indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(str(tmp), str(PROFILES_PATH))
 
 
 def _avatar_path(username: str) -> Path:
@@ -159,13 +183,16 @@ def _fetch_single(page, username: str, cache_entry: dict = None) -> dict:
 
     # Detect login wall: og:title is just "Instagram" without username
     if not title or (username not in (title or "") and "Instagram" in (title or "") and "@" not in (title or "")):
+        # Check if account is deactivated via HTTP (404) or just login wall (201)
+        status = check_account_status(username)
         return {
             "username": username,
-            "full_name": "",
+            "full_name": cache_entry.get("full_name", "") if cache_entry else "",
             "avatar_url": "",
-            "avatar_local": "",
+            "avatar_local": cache_entry.get("avatar_local", "") if cache_entry else "",
             "cached_at": date.today().isoformat(),
             "error": "login_wall",
+            "status": status,
         }
 
     full_name = _extract_full_name(title or "")
@@ -191,6 +218,7 @@ def _fetch_single(page, username: str, cache_entry: dict = None) -> dict:
         "following_count": stats.get("following_count"),
         "posts_count": stats.get("posts_count"),
         "cached_at": date.today().isoformat(),
+        "status": "active",
     }
 
 
@@ -249,15 +277,16 @@ def enrich_profiles(
                 failed += 1
                 cache[username] = {
                     "username": username,
-                    "full_name": "",
+                    "full_name": cache.get(username, {}).get("full_name", ""),
                     "avatar_url": "",
-                    "avatar_local": "",
+                    "avatar_local": cache.get(username, {}).get("avatar_local", ""),
                     "cached_at": date.today().isoformat(),
                     "error": str(e)[:100],
+                    "status": "unknown",
                 }
                 print(f"  [{i+1}/{len(to_fetch)}] @{username}: ERROR {e}", flush=True)
 
-            # Save cache every 10 profiles and regenerate dashboard
+            # Save cache every 10 profiles and notify progress
             if (i + 1) % 10 == 0:
                 _save_cache(cache)
                 if on_progress:

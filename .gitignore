@@ -24,11 +24,14 @@ data/profiles.json
 data/avatars/*
 !data/avatars/.gitkeep
 
-# Generated dashboard
+# Generated dashboards
 index.html
+index-v1.html
 
 # Fetch log
 data/fetch.log
+data/.fetch.lock
+data/fetch_status.json
 
 # Instagram export archives
 *.zip
@@ -36,3 +39,6 @@ data/fetch.log
 # IDE
 .idea/
 .vscode/
+
+# Brainstorm mockups
+.superpowers/

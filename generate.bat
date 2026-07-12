@@ -12,5 +12,6 @@ REM Run generate command
 python "%~dp0main.py" generate %*
 
 echo.
-echo Done! Open index.html in your browser.
+echo Done! Open index.html (V2) in your browser.
+echo Classic UI: index-v1.html
 pause

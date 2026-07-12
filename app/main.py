@@ -1,5 +1,3 @@
-import os
-import subprocess
 import sys
 from datetime import date
 from pathlib import Path
@@ -9,7 +7,7 @@ import typer
 
 from app.config import Settings
 from app.dashboard import save_dashboard
-from app.enricher import get_profiles, get_stale_count
+from app.enricher import enrich_profiles, get_profiles, get_stale_count
 from app.parser import ExportParser
 from app.storage import list_snapshots, save_snapshot
 
@@ -23,24 +21,6 @@ def _load_settings() -> Settings:
     return Settings.load(CONFIG_PATH)
 
 
-def _start_background_fetch(import_dir: Path) -> None:
-    """Start avatar fetching in a detached background process."""
-    # Use absolute path so the background process finds files regardless of cwd
-    abs_import = import_dir.resolve()
-    bg_script = str(Path(__file__).parent / "background_fetch.py")
-
-    # Log file for the background process
-    log_file = (Path(__file__).parent.parent / "data" / "fetch.log").open("a", encoding="utf-8")
-
-    subprocess.Popen(
-        [sys.executable, bg_script, str(abs_import)],
-        stdout=log_file,
-        stderr=subprocess.STDOUT,
-        close_fds=True,
-        cwd=str(Path(__file__).parent.parent),
-    )
-
-
 @app.command()
 def generate(
     import_dir: Optional[Path] = typer.Option(
@@ -50,13 +30,15 @@ def generate(
         None, "--date", help="Snapshot date (YYYY-MM-DD)"
     ),
     output: Path = typer.Option(Path("index.html"), "--output", help="HTML output path"),
-    no_fetch: bool = typer.Option(False, "--no-fetch", help="Skip background avatar fetching"),
+    no_fetch: bool = typer.Option(False, "--no-fetch", help="Skip avatar fetching"),
+    delay: float = typer.Option(2.0, "--delay", help="Delay between avatar requests (seconds)"),
 ) -> None:
-    """Parse Instagram export JSON files and generate an HTML dashboard."""
+    """Parse Instagram export, generate dashboard, and fetch avatars."""
     settings = _load_settings()
     target_date = date.fromisoformat(snapshot_date) if snapshot_date else date.today()
     import_path = import_dir or IMPORT_DIR
 
+    # 1. Parse export and save snapshot
     parser = ExportParser(import_path)
     snapshot = parser.parse()
     snapshot.date = target_date
@@ -65,22 +47,48 @@ def generate(
     all_snapshots = list_snapshots()
     profiles = get_profiles()
 
+    # 2. Generate initial dashboards V2 + V1 (with whatever avatars we already have)
     save_dashboard(snapshot, all_snapshots, settings.target_username, output, profiles)
-    typer.echo(f"Dashboard saved to {output}")
+    v1_path = output.parent / "index-v1.html"
+    typer.echo(f"Dashboard V2 saved to {output}")
+    typer.echo(f"Dashboard V1 saved to {v1_path}")
     typer.echo(f"Followers: {len(snapshot.followers)}")
     typer.echo(f"Following: {len(snapshot.following)}")
     if profiles:
         with_avatars = sum(1 for p in profiles.values() if p.get("avatar_local"))
         typer.echo(f"Profiles cache: {len(profiles)} ({with_avatars} with avatars)")
 
-    # Start background avatar fetching
+    # 3. Fetch avatars sequentially (same process, same console)
     if not no_fetch:
         stale = get_stale_count(snapshot)
         if stale > 0:
-            typer.echo(f"Starting background fetch for {stale} profiles...")
-            _start_background_fetch(import_path)
-            typer.echo("Avatars will be downloaded in the background.")
-            typer.echo("Run 'generate' again later to update the dashboard.")
+            typer.echo("")
+            typer.echo(f"Fetching avatars for {stale} profiles (delay={delay}s)...")
+            typer.echo("Dashboards will update every 10 profiles. Press Ctrl+C to stop.")
+            typer.echo("")
+
+            def on_progress(done: int, total: int) -> None:
+                # Regenerate both dashboards so user can see avatars appearing
+                fresh_profiles = get_profiles()
+                save_dashboard(snapshot, all_snapshots, settings.target_username, output, fresh_profiles)
+                typer.echo(f"  [{done}/{total}] Dashboards updated")
+
+            try:
+                result = enrich_profiles(snapshot, delay=delay, on_progress=on_progress)
+                typer.echo("")
+                typer.echo(f"Avatars: {result['fetched']} fetched, {result['failed']} failed, "
+                           f"{result['skipped']} cached")
+
+                # Final dashboard regeneration with all fresh avatars
+                fresh_profiles = get_profiles()
+                save_dashboard(snapshot, all_snapshots, settings.target_username, output, fresh_profiles)
+                typer.echo(f"Dashboards regenerated with {len(fresh_profiles)} profiles.")
+            except KeyboardInterrupt:
+                typer.echo("")
+                typer.echo("Interrupted! Saving what we have...")
+                fresh_profiles = get_profiles()
+                save_dashboard(snapshot, all_snapshots, settings.target_username, output, fresh_profiles)
+                typer.echo("Dashboards saved with partial results.")
         else:
             typer.echo("All avatars are up to date.")
 
@@ -96,9 +104,7 @@ def fetch(
     ),
     force: bool = typer.Option(False, "--force", help="Re-fetch all profiles, even cached ones"),
 ) -> None:
-    """Fetch avatars and full names from Instagram profiles (foreground)."""
-    from app.enricher import enrich_profiles
-
+    """Fetch avatars and full names from Instagram profiles."""
     parser = ExportParser(import_dir or IMPORT_DIR)
     snapshot = parser.parse()
     snapshot.date = date.today()
