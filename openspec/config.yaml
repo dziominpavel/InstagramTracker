@@ -1,0 +1,24 @@
+schema: spec-driven
+
+context: |
+  Instagram Tracker — локальный Python-инструмент: парсинг официального экспорта Instagram →
+  снимки → интерактивный HTML-дашборд (аватарки, анализ подписок, сравнение периодов).
+  Стек: Python, один HTML-дашборд (генерируется из app/dashboard*.py), Playwright для enrichment.
+  UI-тексты дашборда — русские. OpenSpec-артефакты (proposal, design, tasks, specs) — тоже русские,
+  кроме normative keywords MUST/SHALL/MUST NOT и заголовков сценариев WHEN/THEN/AND.
+
+rules:
+  specs:
+    - Текст requirements и сценариев — русский
+    - В каждом ### Requirement: обязательно MUST, SHALL или MUST NOT (не «ДОЛЖЕН») — иначе validate падает
+    - Main spec (openspec/specs/): секции ## Purpose и ## Requirements
+    - Delta spec (openspec/changes/*/specs/): ## ADDED/MODIFIED/REMOVED Requirements
+    - Каждый requirement — минимум один #### Scenario: с WHEN/THEN
+    - Capability = подсистема (dashboard-ui, snapshot-pipeline, profile-enrichment), не отдельная фича
+    - После правок запускать openspec validate --all
+  proposal:
+    - Русский язык, кратко: что и зачем
+  design:
+    - Русский язык: как реализовать, trade-offs
+  tasks:
+    - Русский язык, чекбоксы - [ ] / - [x]

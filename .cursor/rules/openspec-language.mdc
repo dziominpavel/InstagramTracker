@@ -1,0 +1,48 @@
+---
+description: Язык openspec-артефактов — русский + normative keywords MUST/SHALL
+globs: ["openspec/**/*"]
+alwaysApply: true
+---
+
+# Язык openspec
+
+## Текст — русский
+
+Все артефакты openspec пишутся на **русском языке**:
+
+- `proposal.md`, `design.md`, `tasks.md` — русский
+- `specs/**/*.md` — русский (названия requirements, сценарии, Purpose)
+- Код в snippets и примерах — **английский**, как в кодовой базе
+
+## Исключение: normative keywords (обязательно)
+
+`openspec validate` **не распознаёт** русские «ДОЛЖЕН», «ДОЛЖНА», «ДОЛЖНО», «ДОЛЖНЫ», «НЕ ДОЛЖНО».
+
+В **первой строке** каждого `### Requirement:` используй английские ключевые слова:
+
+| Смысл | Пиши | Не пиши |
+|-------|------|---------|
+| Обязательство | `MUST` / `SHALL` | ДОЛЖЕН, ДОЛЖНА, ДОЛЖНО |
+| Запрет | `MUST NOT` | НЕ ДОЛЖЕН, НЕ ДОЛЖНО |
+
+**Примеры:**
+
+```
+✅ Дашборд MUST показывать переключатель на классический вид в шапке справа.
+✅ Генератор MUST NOT требовать сеть для открытия уже сгенерированного HTML.
+❌ Дашборд ДОЛЖЕН показывать переключатель...
+```
+
+Остальной текст requirement — по-русски. Сценарии: `#### Scenario:` + `**WHEN**` / `**THEN**` / `**AND**`.
+
+## Структура spec.md
+
+### Main spec — `openspec/specs/<capability>/spec.md`
+
+- `## Purpose`
+- `## Requirements`
+- Каждый requirement: `### Requirement: <название>` + минимум один `#### Scenario:`
+
+### Delta spec — `openspec/changes/<change>/specs/<capability>/spec.md`
+
+- `## ADDED Requirements` / `## MODIFIED Requirements` / `## REMOVED Requirements`
