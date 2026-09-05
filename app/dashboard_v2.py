@@ -272,13 +272,12 @@ const TABS = [
   { key: "fans", label: "Фанаты", group: "Анализ", desc: "Подписаны на вас, но вы не подписаны на них." },
   { key: "mutual", label: "Взаимные", group: "Анализ", desc: "Вы подписаны друг на друга." },
   { key: "new_followers", label: "Новые подписчики", group: "Изменения", desc: "Подписались на вас за выбранный период.", requiresChanges: true },
-  { key: "lost_followers", label: "Отписались", group: "Изменения", desc: "Отписались от вас за выбранный период.", requiresChanges: true },
+  { key: "lost_followers", label: "Отписались от меня", group: "Изменения", desc: "Отписались от вас за выбранный период.", requiresChanges: true },
   { key: "new_following", label: "Новые подписки", group: "Изменения", desc: "Вы подписались на них за выбранный период.", requiresChanges: true },
   { key: "lost_following", label: "Вы отписались", group: "Изменения", desc: "Вы отписались от них за выбранный период.", requiresChanges: true },
   { key: "followers", label: "Подписчики", group: "Списки" },
   { key: "following", label: "Подписки", group: "Списки" },
-  { key: "recently_unfollowed", label: "Недавно отписаны", group: "Списки", desc: "Профили, от которых вы недавно отписались." },
-  { key: "recent_follow_requests", label: "Заявки", group: "Списки", desc: "Отправленные заявки в подписчики." },
+  { key: "recent_follow_requests", label: "Заявки", group: "Списки", desc: "Заявки в подписчики, которые ещё не приняты." },
   { key: "hide_story_from", label: "Скрыты истории", group: "Списки", desc: "Люди, от которых скрыты ваши истории." },
   { key: "blocked", label: "Заблокированы", group: "Списки" },
 ];
@@ -462,7 +461,7 @@ function overviewView(){
       </div>
       <div class="changes">
         <div class="change-card up" onclick="go('new_followers')"><div class="value">${ch.new_followers.length}</div><div class="label">Новые подписчики →</div></div>
-        <div class="change-card down" onclick="go('lost_followers')"><div class="value">${ch.lost_followers.length}</div><div class="label">Отписались →</div></div>
+        <div class="change-card down" onclick="go('lost_followers')"><div class="value">${ch.lost_followers.length}</div><div class="label">Отписались от меня →</div></div>
         <div class="change-card up" onclick="go('new_following')"><div class="value">${ch.new_following.length}</div><div class="label">Новые подписки →</div></div>
         <div class="change-card down" onclick="go('lost_following')"><div class="value">${ch.lost_following.length}</div><div class="label">Вы отписались →</div></div>
       </div>`;

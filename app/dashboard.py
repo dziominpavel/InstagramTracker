@@ -42,6 +42,10 @@ def build_payload(
     not_following_back = [u for u in snapshot.following if u.id not in follower_ids]
     fans = [u for u in snapshot.followers if u.id not in following_ids]
     mutual = [u for u in snapshot.followers if u.id in following_ids]
+    # Pending requests only: export keeps accepted people in recent_follow_requests
+    active_follow_requests = [
+        u for u in snapshot.recent_follow_requests if u.username not in follower_ids
+    ]
 
     snapshots_data = []
     for s in all_snapshots:
@@ -64,8 +68,7 @@ def build_payload(
             "fans": len(fans),
             "blocked": len(snapshot.blocked),
             "hide_story_from": len(snapshot.hide_story_from),
-            "recently_unfollowed": len(snapshot.recently_unfollowed),
-            "recent_follow_requests": len(snapshot.recent_follow_requests),
+            "recent_follow_requests": len(active_follow_requests),
         },
         "lists": {
             "not_following_back": _users_payload(not_following_back, profiles),
@@ -75,8 +78,7 @@ def build_payload(
             "following": _users_payload(snapshot.following, profiles),
             "blocked": _users_payload(snapshot.blocked, profiles),
             "hide_story_from": _users_payload(snapshot.hide_story_from, profiles),
-            "recently_unfollowed": _users_payload(snapshot.recently_unfollowed, profiles),
-            "recent_follow_requests": _users_payload(snapshot.recent_follow_requests, profiles),
+            "recent_follow_requests": _users_payload(active_follow_requests, profiles),
         },
         "snapshots": snapshots_data,
     }

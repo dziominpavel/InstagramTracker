@@ -254,8 +254,7 @@ const TABS = [
   { key: "lost_following", label: "Вы отписались", ico: "➖", group: "Изменения", desc: "Вы отписались от них за выбранный период.", requiresChanges: true },
   { key: "followers", label: "Подписчики", ico: "👥", group: "Списки" },
   { key: "following", label: "Подписки", ico: "➕", group: "Списки" },
-  { key: "recently_unfollowed", label: "Недавно отписаны", ico: "🚪", group: "Списки", desc: "Профили, от которых вы недавно отписались." },
-  { key: "recent_follow_requests", label: "Заявки", ico: "📨", group: "Списки", desc: "Отправленные заявки в подписчики." },
+  { key: "recent_follow_requests", label: "Заявки", ico: "📨", group: "Списки", desc: "Заявки в подписчики, которые ещё не приняты." },
   { key: "hide_story_from", label: "Скрыты истории", ico: "🙈", group: "Списки", desc: "Люди, от которых скрыты ваши истории." },
   { key: "blocked", label: "Заблокированы", ico: "🚫", group: "Списки" },
 ];
@@ -427,7 +426,7 @@ function overviewView(){
       </h3>
       <div class="changes">
         <div class="change-card up clickable" onclick="go('new_followers')"><div class="value">+${ch.new_followers.length}</div><div class="label">Новые подписчики →</div></div>
-        <div class="change-card down clickable" onclick="go('lost_followers')"><div class="value">−${ch.lost_followers.length}</div><div class="label">Отписались от вас →</div></div>
+        <div class="change-card down clickable" onclick="go('lost_followers')"><div class="value">−${ch.lost_followers.length}</div><div class="label">Отписались от меня →</div></div>
         <div class="change-card up clickable" onclick="go('new_following')"><div class="value">+${ch.new_following.length}</div><div class="label">Новые подписки →</div></div>
         <div class="change-card down clickable" onclick="go('lost_following')"><div class="value">−${ch.lost_following.length}</div><div class="label">Вы отписались →</div></div>
       </div>`;
@@ -443,7 +442,6 @@ function overviewView(){
     statCard("mutual","Взаимные","🤝",c.mutual),
     statCard("not_following_back","Не подписаны на меня","💔",c.not_following_back,{accent:true}),
     statCard("fans","Фанаты","⭐",c.fans,{accent:true}),
-    statCard("recently_unfollowed","Недавно отписаны","🚪",c.recently_unfollowed),
     statCard("recent_follow_requests","Заявки","📨",c.recent_follow_requests),
     statCard("hide_story_from","Скрыты истории","🙈",c.hide_story_from),
     statCard("blocked","Заблокированы","🚫",c.blocked),

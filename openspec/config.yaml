@@ -9,16 +9,16 @@ context: |
 
 rules:
   specs:
-    - Текст requirements и сценариев — русский
-    - В каждом ### Requirement: обязательно MUST, SHALL или MUST NOT (не «ДОЛЖЕН») — иначе validate падает
-    - Main spec (openspec/specs/): секции ## Purpose и ## Requirements
-    - Delta spec (openspec/changes/*/specs/): ## ADDED/MODIFIED/REMOVED Requirements
-    - Каждый requirement — минимум один #### Scenario: с WHEN/THEN
-    - Capability = подсистема (dashboard-ui, snapshot-pipeline, profile-enrichment), не отдельная фича
-    - После правок запускать openspec validate --all
+    - "Текст requirements и сценариев — русский"
+    - "В каждом ### Requirement: обязательно MUST, SHALL или MUST NOT (не «ДОЛЖЕН») — иначе validate падает"
+    - "Main spec (openspec/specs/): секции ## Purpose и ## Requirements"
+    - "Delta spec (openspec/changes/*/specs/): ## ADDED/MODIFIED/REMOVED Requirements"
+    - "Каждый requirement — минимум один #### Scenario: с WHEN/THEN"
+    - "Capability = подсистема (dashboard-ui, snapshot-pipeline, profile-enrichment), не отдельная фича"
+    - "После правок запускать openspec validate --all"
   proposal:
-    - Русский язык, кратко: что и зачем
+    - "Русский язык, кратко: что и зачем"
   design:
-    - Русский язык: как реализовать, trade-offs
+    - "Русский язык: как реализовать, trade-offs"
   tasks:
-    - Русский язык, чекбоксы - [ ] / - [x]
+    - "Русский язык, чекбоксы - [ ] / - [x]"
