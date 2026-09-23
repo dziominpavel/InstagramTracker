@@ -1,0 +1,4 @@
+name: InstagramTracker
+description: "Анализ подписчиков и подписок Instagram через официальный экспорт: интерактивный HTML-дашборд — кто не подписан на тебя, взаимные подписки, изменения за период."
+icon: assets/icon.png
+requirements: "Windows 10 или новее"
