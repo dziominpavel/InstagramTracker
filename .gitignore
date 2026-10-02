@@ -25,8 +25,8 @@ data/avatars/*
 !data/avatars/.gitkeep
 
 # Generated dashboards
-index.html
-index-v1.html
+/index.html
+/index-v1.html
 
 # Fetch log
 data/fetch.log
