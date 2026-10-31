@@ -16,7 +16,7 @@
 1. `README.md` — как пользоваться.
 2. `openspec/specs/` — формальные требования (если capability уже есть).
 3. Активные changes: `openspec/changes/` (не `archive/`).
-4. Workflows: `/opsx:propose`, `/opsx:apply`, `/opsx:archive`.
+4. Workflows в OpenCode: `/opsx-propose`, `/opsx-apply`, `/opsx-archive`.
 
 ## OpenSpec
 
